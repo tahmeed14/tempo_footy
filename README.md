@@ -1,6 +1,6 @@
-# "Rise to the Rhythm" — Carnegie Mellon Sports Analytics Conference 2026
+# "Rise to the Rhythm"
 
-If you are here to evaluate the reproducibility of this research project, please use the `main` branch. The other branches are for development work.
+Open source repository for research project on tempo in football (soccer)
 
 ## Prerequisites
 
