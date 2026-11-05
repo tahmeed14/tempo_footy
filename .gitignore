@@ -16,6 +16,7 @@ env/
 
 # dev scripts
 *dev*.py
+!tests/**/test_dev*.py
 
 todo/
 
