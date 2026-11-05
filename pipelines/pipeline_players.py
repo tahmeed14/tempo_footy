@@ -1,4 +1,11 @@
-"""Build the processed Gradient Sports player-game lookup."""
+"""Build the processed Gradient Sports player-game lookup dataset to be
+used in downstream analysis.
+
+Roster lookup output columns:
+("game_id", "team_id", "opponent_id", "player_id", "shirt_number",
+ "position_group_type", "player_position_group", "player_name",
+ "team_name", "started")
+"""
 
 import logging
 from pathlib import Path
@@ -47,8 +54,8 @@ def run_pipeline(
     logger.info("Building player lookup from: %s", roster_dir)
     df_lookup = build_player_game_lookup(roster_dir)
     logger.info(
-        "Built player lookup with %d players across %d games",
-        df_lookup.height,
+        "Built player lookup with %d unique players across %d games",
+        df_lookup.get_column("player_id").n_unique(),
         df_lookup.get_column("game_id").n_unique(),
     )
 
