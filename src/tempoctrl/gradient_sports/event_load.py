@@ -4,6 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
+EVENTS_OUTPUT_DIRECTORY = Path("data/processed/gradient_sports/events")
 MATCH_POSSESSION_LOOKUP_PATH = Path(
     "data/curated/gradient_sports/possession_lookup/"
     "match_possession_lookup.parquet"
@@ -85,27 +86,32 @@ def write_match_possession_lookup(
     output_path: str | Path = MATCH_POSSESSION_LOOKUP_PATH,
     player_lookup_path: str | Path = PLAYER_GAME_LOOKUP_PATH,
 ) -> Path:
-    """Upsert one match and overwrite the possession lookup file."""
+    """Replace selected matches while preserving other lookup rows.
+
+    Enrich incoming possessions once and retain all columns on existing
+    rows from other matches. A selected match without any identified
+    possessions removes its old lookup rows.
+    """
     output_path = Path(output_path)
-    game_ids = df_in.get_column("game_id").drop_nulls().unique()
+    game_ids = df_in.get_column("game_id").drop_nulls().unique().to_list()
     df_lookup = (
         df_in.select(MATCH_POSSESSION_LOOKUP_COLUMNS)
         .filter(pl.col("match_team_player_possession_id").is_not_null())
         .unique()
+        .pipe(add_player_metadata, player_lookup_path)
     )
 
     if output_path.is_file():
         df_existing = (
             pl.read_parquet(output_path)
-            .select(MATCH_POSSESSION_LOOKUP_COLUMNS)
             .filter(~pl.col("game_id").is_in(game_ids))
         )
         df_lookup = pl.concat(
             (df_existing, df_lookup),
-            how="vertical_relaxed",
+            how="diagonal_relaxed",
         )
 
-    df_lookup = df_lookup.pipe(add_player_metadata, player_lookup_path).sort(
+    df_lookup = df_lookup.sort(
         ("game_id", "match_team_player_possession_id")
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,23 +119,51 @@ def write_match_possession_lookup(
     return output_path
 
 
-def load_events(df_in: pl.DataFrame) -> tuple[Path, Path]:
-    """Write one match of event data and return both output paths.
+def load_events(
+    df_in: pl.DataFrame,
+    *,
+    output_dir: str | Path = EVENTS_OUTPUT_DIRECTORY,
+    possession_lookup_path: str | Path = MATCH_POSSESSION_LOOKUP_PATH,
+    player_lookup_path: str | Path = PLAYER_GAME_LOOKUP_PATH,
+) -> tuple[Path, ...]:
+    """Write event files per match and update the shared lookup once.
+
+    Preserve each match's source row order, columns, and dtypes. Replace
+    event files only for selected matches and retain unrelated files.
+
+    Args:
+        df_in: Processed events for one or more matches.
+        output_dir: Directory receiving per-match event Parquet files.
+        possession_lookup_path: Shared possession lookup destination.
+        player_lookup_path: Optional player metadata source.
 
     Returns:
-        The event parquet path followed by the possession lookup path.
+        Event paths ordered by match ID, followed by the lookup path.
+        Single-match calls retain the original two-path return value.
+
+    Raises:
+        ValueError: If the input is empty or any game_id is null.
 
     """
-    match_ids = df_in.get_column("game_id").drop_nulls().unique().to_list()
-    if len(match_ids) != 1:
+    if df_in.is_empty() or df_in.get_column("game_id").null_count() > 0:
         raise ValueError(
-            "Event data must contain exactly one non-null game_id"
+            "Event data must contain rows with non-null game_id values"
         )
 
-    output_path = Path(
-        f"data/processed/gradient_sports/events/{match_ids[0]}.parquet"
+    match_frames = df_in.partition_by(
+        "game_id", as_dict=True, maintain_order=True
     )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    possession_lookup_path = write_match_possession_lookup(df_in)
-    df_in.write_parquet(output_path, compression="zstd")
-    return output_path, possession_lookup_path
+    output_directory = Path(output_dir)
+    output_directory.mkdir(parents=True, exist_ok=True)
+    lookup_path = write_match_possession_lookup(
+        df_in,
+        output_path=possession_lookup_path,
+        player_lookup_path=player_lookup_path,
+    )
+    output_paths = []
+    for (match_id,), df_match in sorted(match_frames.items()):
+        output_path = output_directory / f"{match_id}.parquet"
+        df_match.write_parquet(output_path, compression="zstd")
+        output_paths.append(output_path)
+
+    return (*output_paths, lookup_path)
