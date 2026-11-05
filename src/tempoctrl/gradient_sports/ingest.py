@@ -122,17 +122,46 @@ def stage_events(
     return staged_path
 
 
-def scan_events(df_path: str | Path) -> pl.LazyFrame:
-    """Scan staged events and add their one-based source row numbers.
+def scan_events(
+    df_path: str | Path | Sequence[str | Path],
+) -> pl.LazyFrame:
+    """Scan selected staged events and add one-based event numbers.
+
+    A single file retains its source row numbering. For multiple files,
+    number rows within each ``gameId`` across the combined input.
+    Preserve supplied file order and source row order within each file.
+    Combine differing source schemas by name and fill absent fields with
+    nulls, promoting compatible dtypes when needed.
 
     Args:
-        df_path: Staged Parquet path returned by ``stage_events``.
+        df_path: A staged Parquet path or sequence of selected paths.
 
     Returns:
-        A lazy query with ``event_number`` assigned before filtering.
+        A lazy query with a leading UInt32 ``event_number`` column.
+
+    Raises:
+        ValueError: If no paths are supplied or a multi-file input lacks
+            the ``gameId`` column required for per-match numbering.
 
     """
-    return pl.scan_parquet(df_path).with_row_index("event_number", offset=1)
+    paths = [df_path] if isinstance(df_path, (str, Path)) else list(df_path)
+    if not paths:
+        raise ValueError("At least one staged event Parquet path is required.")
+
+    scans = [pl.scan_parquet(path) for path in paths]
+    if len(scans) == 1:
+        return scans[0].with_row_index("event_number", offset=1)
+
+    for path, scan in zip(paths, scans, strict=True):
+        if "gameId" not in scan.collect_schema():
+            raise ValueError(f"Staged event file is missing gameId: {path}")
+
+    return pl.concat(scans, how="diagonal_relaxed").select(
+        pl.int_range(1, pl.len() + 1, dtype=pl.UInt32)
+        .over("gameId")
+        .alias("event_number"),
+        pl.all(),
+    )
 
 
 def resolve_tracking_paths(
