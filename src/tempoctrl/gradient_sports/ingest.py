@@ -12,7 +12,7 @@ RAW_EVENTS_DIRECTORY = Path("data/raw/gradient_sports/events")
 def discover_event_files(
     input_dir: str | Path = RAW_EVENTS_DIRECTORY,
 ) -> tuple[tuple[int, Path], ...]:
-    """Discover raw event files with distinct numeric match IDs.
+    """Discover regular JSON files with distinct numeric match IDs.
 
     Raise ValueError when multiple filenames resolve to the same ID.
     """
@@ -22,7 +22,9 @@ def discover_event_files(
             f"Raw event directory does not exist: {input_directory}"
         )
 
-    event_files = sorted(input_directory.glob("*.json"))
+    event_files = sorted(
+        path for path in input_directory.glob("*.json") if path.is_file()
+    )
     if not event_files:
         raise FileNotFoundError(
             f"No raw event JSON files found in: {input_directory}"

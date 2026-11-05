@@ -207,3 +207,69 @@ def test_discover_event_files_rejects_duplicate_numeric_ids(
     assert f"match ID {expected_id}:" in message
     for filename in filenames:
         assert str(tmp_path / filename) in message
+
+
+@pytest.mark.parametrize(
+    "directory_name", ["202.json", "backup.json", "0101.json"]
+)
+def test_discover_event_files_ignores_json_named_directories(
+    tmp_path: Path,
+    directory_name: str,
+) -> None:
+    """Ignore directories even when their names match the JSON pattern.
+
+    Behavior:
+        Validate and return only regular event files.
+
+    Input:
+        Valid files 101.json and 10.json, plus a JSON-named directory
+        whose stem is numeric, nonnumeric, or aliases match 101.
+        The directory also contains an otherwise valid nested JSON file.
+
+    Expected:
+        Only files 10.json and 101.json are returned in numeric order.
+
+    Guards against:
+        Staging directories, false filename or duplicate-ID errors, or
+        recursively including files outside the raw input directory.
+    """
+    (tmp_path / "101.json").touch()
+    (tmp_path / "10.json").touch()
+    nested_dir = tmp_path / directory_name
+    nested_dir.mkdir()
+    (nested_dir / "303.json").touch()
+
+    assert discover_event_files(tmp_path) == (
+        (10, tmp_path / "10.json"),
+        (101, tmp_path / "101.json"),
+    )
+
+
+def test_discover_event_files_requires_files_when_json_directories_exist(
+    tmp_path: Path,
+) -> None:
+    """Report missing events when only JSON-named directories exist.
+
+    Behavior:
+        Treat directories as non-inputs before checking for empty input.
+
+    Input:
+        Directories named 101.json and backup.json, with no regular
+        JSON files at the discovery level.
+
+    Expected:
+        FileNotFoundError reports no raw event JSON files in the path.
+
+    Guards against:
+        Returning directories as matches or raising a misleading
+        nonnumeric-filename error instead of reporting missing inputs.
+    """
+    (tmp_path / "101.json").mkdir()
+    (tmp_path / "backup.json").mkdir()
+
+    with pytest.raises(
+        FileNotFoundError, match="No raw event JSON files found in:"
+    ) as error_info:
+        discover_event_files(tmp_path)
+
+    assert str(tmp_path) in str(error_info.value)
