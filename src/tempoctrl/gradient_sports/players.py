@@ -5,14 +5,12 @@ from pathlib import Path
 import polars as pl
 
 PLAYER_LOOKUP_PATH = Path(
-    "data/curated/gradient_sports/metadata_lookup/"
-    "player_game_lookup.parquet"
+    "data/curated/gradient_sports/metadata_lookup/player_game_lookup.parquet"
 )
 
 POSITION_MAPPER = {
     # Goalkeepers
     "GK": "Goalkeeper",
-
     # Defenders
     "CB": "Centre Back",
     "RCB": "Centre Back",
@@ -22,7 +20,6 @@ POSITION_MAPPER = {
     "RB": "Full Back",
     "LWB": "Full Back",
     "RWB": "Full Back",
-
     # Midfielders
     "DM": "Midfielder",
     "LDM": "Midfielder",
@@ -33,7 +30,6 @@ POSITION_MAPPER = {
     "AM": "Midfielder",
     "LAM": "Midfielder",
     "RAM": "Midfielder",
-
     # Attackers
     "LW": "Winger",
     "RW": "Winger",
@@ -119,24 +115,20 @@ def _parse_game_id(roster_path: Path) -> int:
         return int(roster_path.stem)
     except ValueError as error:
         raise ValueError(
-            "Roster filename must be a numeric game ID: "
-            f"{roster_path.name}"
+            f"Roster filename must be a numeric game ID: {roster_path.name}"
         ) from error
 
 
 def _validate_position_groups(df_roster: pl.DataFrame) -> None:
     """Raise an error when a roster has an unmapped position code."""
     position_codes = set(
-        df_roster.get_column("position_group_type")
-        .drop_nulls()
-        .to_list()
+        df_roster.get_column("position_group_type").drop_nulls().to_list()
     )
     unmapped_codes = sorted(position_codes - POSITION_MAPPER.keys())
     if unmapped_codes:
         formatted_codes = ", ".join(unmapped_codes)
         raise ValueError(
-            "Unmapped positionGroupType values: "
-            f"{formatted_codes}"
+            f"Unmapped positionGroupType values: {formatted_codes}"
         )
 
 
@@ -175,8 +167,7 @@ def _validate_two_teams_per_game(df_lookup: pl.DataFrame) -> None:
             for game_id, team_count in invalid_games.iter_rows()
         )
         raise ValueError(
-            "Each game must contain exactly two teams; found: "
-            f"{game_counts}"
+            f"Each game must contain exactly two teams; found: {game_counts}"
         )
 
 
@@ -194,12 +185,10 @@ def _validate_unique_key(
     if not duplicate_keys.is_empty():
         key_name = ", ".join(key_columns)
         duplicate_values = ", ".join(
-            str(tuple(row[:-1]))
-            for row in duplicate_keys.iter_rows()
+            str(tuple(row[:-1])) for row in duplicate_keys.iter_rows()
         )
         raise ValueError(
-            f"Duplicate player lookup key ({key_name}): "
-            f"{duplicate_values}"
+            f"Duplicate player lookup key ({key_name}): {duplicate_values}"
         )
 
 
@@ -214,6 +203,7 @@ def read_roster_file(roster_path: str | Path) -> pl.DataFrame:
 
     Raises:
         ValueError: If the filename or a position code is invalid.
+
     """
     roster_path = Path(roster_path)
     game_id = _parse_game_id(roster_path)
@@ -222,10 +212,7 @@ def read_roster_file(roster_path: str | Path) -> pl.DataFrame:
     df_roster = df_raw.select(
         pl.lit(game_id).cast(pl.Int64).alias("game_id"),
         pl.col("team").struct.field("id").cast(pl.Int64).alias("team_id"),
-        pl.col("player")
-        .struct.field("id")
-        .cast(pl.Int64)
-        .alias("player_id"),
+        pl.col("player").struct.field("id").cast(pl.Int64).alias("player_id"),
         pl.col("shirtNumber").cast(pl.Int32).alias("shirt_number"),
         pl.col("positionGroupType")
         .cast(pl.String)
@@ -234,10 +221,7 @@ def read_roster_file(roster_path: str | Path) -> pl.DataFrame:
         .struct.field("nickname")
         .cast(pl.String)
         .alias("player_name"),
-        pl.col("team")
-        .struct.field("name")
-        .cast(pl.String)
-        .alias("team_name"),
+        pl.col("team").struct.field("name").cast(pl.String).alias("team_name"),
         pl.col("started").cast(pl.Boolean),
     )
     _validate_position_groups(df_roster)
@@ -268,6 +252,7 @@ def add_opponent_ids(df_lookup: pl.DataFrame) -> pl.DataFrame:
 
     Raises:
         ValueError: If required IDs or team cardinality are invalid.
+
     """
     _validate_required_ids(df_lookup)
     _validate_two_teams_per_game(df_lookup)
@@ -289,16 +274,11 @@ def add_opponent_ids(df_lookup: pl.DataFrame) -> pl.DataFrame:
         validate="m:1",
     )
     if df_out.height != df_lookup.height:
-        raise RuntimeError(
-            "Opponent join changed the player lookup row count"
-        )
+        raise RuntimeError("Opponent join changed the player lookup row count")
     if df_out.get_column("opponent_id").null_count() > 0:
         raise RuntimeError("Opponent join produced null opponent IDs")
 
-    return (
-        df_out.cast(PLAYER_LOOKUP_SCHEMA)
-        .select(PLAYER_LOOKUP_COLUMNS)
-    )
+    return df_out.cast(PLAYER_LOOKUP_SCHEMA).select(PLAYER_LOOKUP_COLUMNS)
 
 
 def build_player_game_lookup(roster_dir: str | Path) -> pl.DataFrame:
@@ -313,6 +293,7 @@ def build_player_game_lookup(roster_dir: str | Path) -> pl.DataFrame:
     Raises:
         FileNotFoundError: If the directory or roster files are absent.
         ValueError: If an input roster violates lookup invariants.
+
     """
     roster_dir = Path(roster_dir)
     if not roster_dir.is_dir():
@@ -322,17 +303,13 @@ def build_player_game_lookup(roster_dir: str | Path) -> pl.DataFrame:
 
     roster_paths = sorted(roster_dir.glob("*.json"))
     if not roster_paths:
-        raise FileNotFoundError(
-            f"No roster JSON files found in: {roster_dir}"
-        )
+        raise FileNotFoundError(f"No roster JSON files found in: {roster_dir}")
 
     roster_frames = []
     for roster_path in roster_paths:
         df_roster = read_roster_file(roster_path)
         if df_roster.is_empty():
-            raise ValueError(
-                f"Roster file contains no players: {roster_path}"
-            )
+            raise ValueError(f"Roster file contains no players: {roster_path}")
         roster_frames.append(df_roster)
 
     df_lookup = pl.concat(roster_frames, how="vertical")
@@ -358,6 +335,7 @@ def write_player_game_lookup(
 
     Returns:
         The resolved output path used by the writer.
+
     """
     output_path = Path(output_path)
     if output_path.is_file() and not overwrite:
@@ -381,6 +359,7 @@ def scan_player_game_lookup(
 
     Raises:
         FileNotFoundError: If the lookup file does not exist.
+
     """
     lookup_path = Path(lookup_path)
     if not lookup_path.is_file():
@@ -406,6 +385,7 @@ def add_player_lookup_features(
 
     Raises:
         ValueError: If required columns are missing or already exist.
+
     """
     if df_lookup is None:
         df_lookup = scan_player_game_lookup()
@@ -420,8 +400,7 @@ def add_player_lookup_features(
     if missing_input_keys:
         missing_columns = ", ".join(missing_input_keys)
         raise ValueError(
-            f"Downstream data is missing player lookup keys: "
-            f"{missing_columns}"
+            f"Downstream data is missing player lookup keys: {missing_columns}"
         )
 
     required_lookup_columns = (
@@ -436,8 +415,7 @@ def add_player_lookup_features(
     if missing_lookup_columns:
         missing_columns = ", ".join(missing_lookup_columns)
         raise ValueError(
-            f"Player lookup is missing required columns: "
-            f"{missing_columns}"
+            f"Player lookup is missing required columns: {missing_columns}"
         )
 
     existing_features = [
@@ -453,9 +431,7 @@ def add_player_lookup_features(
         )
 
     lookup_key_expressions = [
-        pl.col(column_name)
-        .cast(input_schema[column_name])
-        .alias(column_name)
+        pl.col(column_name).cast(input_schema[column_name]).alias(column_name)
         for column_name in PLAYER_LOOKUP_KEYS
     ]
     df_features = df_lookup.select(

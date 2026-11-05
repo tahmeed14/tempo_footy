@@ -14,7 +14,9 @@ DEFAULT_POSTERIOR_PATH = Path("paper/results/tempo_gamma_posterior.nc")
 DEFAULT_METADATA_LOOKUP_PATH = Path(
     "data/curated/gradient_sports/metadata_lookup/player_game_lookup.parquet"
 )
-DEFAULT_MU_PLAYER_OUTPUT_PATH = Path("paper/tables/model_mu_player_random_effects.csv")
+DEFAULT_MU_PLAYER_OUTPUT_PATH = Path(
+    "paper/tables/model_mu_player_random_effects.csv"
+)
 DEFAULT_ALPHA_PLAYER_OUTPUT_PATH = Path(
     "paper/tables/model_alpha_player_random_effects.csv"
 )
@@ -26,47 +28,111 @@ DEFAULT_GROUP_SD_OUTPUT_PATH = Path(
 )
 
 MU_PLAYER_COLUMNS = (
-    "model", "group", "player_id", "playername", "teamname", "estimate",
-    "posterior_sd", "hdi_prob", "hdi_lower", "hdi_upper", "p_gt_zero",
-    "p_lt_zero", "r_hat", "ess_bulk", "ess_tail", "tempo_ratio",
-    "tempo_ratio_hdi_lower", "tempo_ratio_hdi_upper", "tempo_pct_difference",
-    "tempo_pct_difference_lower", "tempo_pct_difference_upper",
-    "expected_tempo_pct_change", "rank",
+    "model",
+    "group",
+    "player_id",
+    "playername",
+    "teamname",
+    "estimate",
+    "posterior_sd",
+    "hdi_prob",
+    "hdi_lower",
+    "hdi_upper",
+    "p_gt_zero",
+    "p_lt_zero",
+    "r_hat",
+    "ess_bulk",
+    "ess_tail",
+    "tempo_ratio",
+    "tempo_ratio_hdi_lower",
+    "tempo_ratio_hdi_upper",
+    "tempo_pct_difference",
+    "tempo_pct_difference_lower",
+    "tempo_pct_difference_upper",
+    "expected_tempo_pct_change",
+    "rank",
 )
 
 ALPHA_PLAYER_COLUMNS = (
-    "model", "group", "player_id", "playername", "teamname", "estimate",
-    "posterior_sd", "hdi_prob", "hdi_lower", "hdi_upper", "p_gt_zero",
-    "p_lt_zero", "r_hat", "ess_bulk", "ess_tail", "shape_ratio",
-    "shape_ratio_hdi_lower", "shape_ratio_hdi_upper", "conditional_cv_ratio",
-    "conditional_cv_ratio_hdi_lower", "conditional_cv_ratio_hdi_upper",
-    "conditional_cv_pct_difference", "conditional_cv_pct_difference_lower",
-    "conditional_cv_pct_difference_upper", "conditional_cv_pct_change",
+    "model",
+    "group",
+    "player_id",
+    "playername",
+    "teamname",
+    "estimate",
+    "posterior_sd",
+    "hdi_prob",
+    "hdi_lower",
+    "hdi_upper",
+    "p_gt_zero",
+    "p_lt_zero",
+    "r_hat",
+    "ess_bulk",
+    "ess_tail",
+    "shape_ratio",
+    "shape_ratio_hdi_lower",
+    "shape_ratio_hdi_upper",
+    "conditional_cv_ratio",
+    "conditional_cv_ratio_hdi_lower",
+    "conditional_cv_ratio_hdi_upper",
+    "conditional_cv_pct_difference",
+    "conditional_cv_pct_difference_lower",
+    "conditional_cv_pct_difference_upper",
+    "conditional_cv_pct_change",
     "conditional_variance_ratio",
     "conditional_variance_ratio_hdi_lower",
     "conditional_variance_ratio_hdi_upper",
     "conditional_variance_pct_difference",
     "conditional_variance_pct_difference_lower",
-    "conditional_variance_pct_difference_upper", "shape_rank", "variability_rank",
+    "conditional_variance_pct_difference_upper",
+    "shape_rank",
+    "variability_rank",
 )
 
 MU_OPPONENT_COLUMNS = (
-    "model", "group", "opponent_id", "opponent_teamname", "estimate",
-    "posterior_sd", "hdi_prob", "hdi_lower", "hdi_upper", "p_gt_zero",
-    "p_lt_zero", "r_hat", "ess_bulk", "ess_tail", "tempo_ratio",
-    "tempo_ratio_hdi_lower", "tempo_ratio_hdi_upper", "tempo_pct_difference",
-    "tempo_pct_difference_lower", "tempo_pct_difference_upper",
-    "expected_tempo_pct_change", "rank",
+    "model",
+    "group",
+    "opponent_id",
+    "opponent_teamname",
+    "estimate",
+    "posterior_sd",
+    "hdi_prob",
+    "hdi_lower",
+    "hdi_upper",
+    "p_gt_zero",
+    "p_lt_zero",
+    "r_hat",
+    "ess_bulk",
+    "ess_tail",
+    "tempo_ratio",
+    "tempo_ratio_hdi_lower",
+    "tempo_ratio_hdi_upper",
+    "tempo_pct_difference",
+    "tempo_pct_difference_lower",
+    "tempo_pct_difference_upper",
+    "expected_tempo_pct_change",
+    "rank",
 )
 
 GROUP_SD_COLUMNS = (
-    "model", "group", "effect_variable", "group_sd_variable", "estimate",
-    "posterior_sd", "hdi_prob", "hdi_lower", "hdi_upper", "r_hat",
-    "ess_bulk", "ess_tail",
+    "model",
+    "group",
+    "effect_variable",
+    "group_sd_variable",
+    "estimate",
+    "posterior_sd",
+    "hdi_prob",
+    "hdi_lower",
+    "hdi_upper",
+    "r_hat",
+    "ess_bulk",
+    "ess_tail",
 )
 
 
-def _summary_with_95_hdi(idata: Any, variable_names: list[str]) -> pd.DataFrame:
+def _summary_with_95_hdi(
+    idata: Any, variable_names: list[str]
+) -> pd.DataFrame:
     """Call az.summary with an explicit 95% HDI across ArviZ APIs."""
     parameters = inspect.signature(az.summary).parameters
     kwargs: dict[str, Any] = {
@@ -205,7 +271,10 @@ def generate_mu_opponent_random_effects_table(
 ) -> pl.DataFrame:
     """Generate opposition-team deviations from the Gamma mean component."""
     effects = _summarize_group_specific_effect(
-        idata, component="mu", group_name="opponent_id", id_column="opponent_id"
+        idata,
+        component="mu",
+        group_name="opponent_id",
+        id_column="opponent_id",
     )
     effects = _join_metadata_without_expansion(
         effects,
@@ -214,7 +283,9 @@ def generate_mu_opponent_random_effects_table(
         metadata_columns=("opponent_teamname",),
     )
     effects = _add_tempo_transformations(effects)
-    effects = _add_deterministic_rank(effects, "estimate", "opponent_id", "rank")
+    effects = _add_deterministic_rank(
+        effects, "estimate", "opponent_id", "rank"
+    )
     table = _finalize_table(effects, MU_OPPONENT_COLUMNS)
     _write_table(table, output_path, DEFAULT_MU_OPPONENT_OUTPUT_PATH.name)
     return table
@@ -313,12 +384,17 @@ def _summarize_group_specific_effect(
     terms = summary.index.astype(str)
     levels = posterior[variable_name].coords[level_dimension].values
     term_to_level = {f"{variable_name}[{level}]": level for level in levels}
-    if len(terms) != len(levels) or any(term not in term_to_level for term in terms):
+    if len(terms) != len(levels) or any(
+        term not in term_to_level for term in terms
+    ):
         raise ValueError(
-            f"Could not align {variable_name!r} summary rows with posterior levels."
+            f"Could not align {variable_name!r} summary rows with "
+            "posterior levels."
         )
 
-    probabilities = _posterior_sign_probabilities(posterior, variable_name, terms)
+    probabilities = _posterior_sign_probabilities(
+        posterior, variable_name, terms
+    )
     result = pd.DataFrame(
         {
             "model": "alpha" if component == "alpha" else "mu",
@@ -339,7 +415,9 @@ def _summarize_group_specific_effect(
     table = pl.from_pandas(result).with_columns(
         pl.col(id_column).cast(pl.Int64, strict=True)
     )
-    if table.height != len(levels) or table[id_column].n_unique() != len(levels):
+    if table.height != len(levels) or table[id_column].n_unique() != len(
+        levels
+    ):
         raise ValueError(f"Expected one posterior row per {group_name} level.")
     return table
 
@@ -356,11 +434,13 @@ def _summarize_group_sd(
     sigma_variable = f"{effect_variable_name}_sigma"
     if sigma_variable not in posterior:
         raise KeyError(
-            f"Posterior random-effect SD variable {sigma_variable!r} was not found."
+            "Posterior random-effect SD variable "
+            f"{sigma_variable!r} was not found."
         )
     if set(posterior[sigma_variable].dims) != {"chain", "draw"}:
         raise ValueError(
-            f"Posterior random-effect SD variable {sigma_variable!r} must be scalar "
+            "Posterior random-effect SD variable "
+            f"{sigma_variable!r} must be scalar "
             "apart from chain and draw dimensions."
         )
 
@@ -412,7 +492,9 @@ def _load_player_metadata(metadata_lookup_path: str | Path) -> pl.DataFrame:
         column for column in required_columns if column not in lookup.columns
     ]
     if missing_columns:
-        raise KeyError(f"Metadata lookup is missing columns: {missing_columns}.")
+        raise KeyError(
+            f"Metadata lookup is missing columns: {missing_columns}."
+        )
 
     clean = lookup.select(required_columns).drop_nulls()
     conflicts = (
@@ -443,7 +525,9 @@ def _load_opponent_metadata(metadata_lookup_path: str | Path) -> pl.DataFrame:
         column for column in required_columns if column not in lookup.columns
     ]
     if missing_columns:
-        raise KeyError(f"Metadata lookup is missing columns: {missing_columns}.")
+        raise KeyError(
+            f"Metadata lookup is missing columns: {missing_columns}."
+        )
 
     clean = lookup.select(required_columns).drop_nulls()
     conflicts = (
@@ -500,56 +584,51 @@ def _add_tempo_transformations(table: pl.DataFrame) -> pl.DataFrame:
         ((pl.col("tempo_ratio_hdi_upper") - 1) * 100).alias(
             "tempo_pct_difference_upper"
         ),
-        ((pl.col("tempo_ratio") - 1) * 100).alias(
-            "expected_tempo_pct_change"
-        ),
+        ((pl.col("tempo_ratio") - 1) * 100).alias("expected_tempo_pct_change"),
     )
 
 
 def _add_alpha_transformations(table: pl.DataFrame) -> pl.DataFrame:
-    return (
-        table.with_columns(
-            pl.col("estimate").exp().alias("shape_ratio"),
-            pl.col("hdi_lower").exp().alias("shape_ratio_hdi_lower"),
-            pl.col("hdi_upper").exp().alias("shape_ratio_hdi_upper"),
-            (-0.5 * pl.col("estimate")).exp().alias("conditional_cv_ratio"),
-            (-0.5 * pl.col("hdi_upper"))
-            .exp()
-            .alias("conditional_cv_ratio_hdi_lower"),
-            (-0.5 * pl.col("hdi_lower"))
-            .exp()
-            .alias("conditional_cv_ratio_hdi_upper"),
-            (-pl.col("estimate")).exp().alias("conditional_variance_ratio"),
-            (-pl.col("hdi_upper"))
-            .exp()
-            .alias("conditional_variance_ratio_hdi_lower"),
-            (-pl.col("hdi_lower"))
-            .exp()
-            .alias("conditional_variance_ratio_hdi_upper"),
-        )
-        .with_columns(
-            ((pl.col("conditional_cv_ratio") - 1) * 100).alias(
-                "conditional_cv_pct_difference"
-            ),
-            ((pl.col("conditional_cv_ratio_hdi_lower") - 1) * 100).alias(
-                "conditional_cv_pct_difference_lower"
-            ),
-            ((pl.col("conditional_cv_ratio_hdi_upper") - 1) * 100).alias(
-                "conditional_cv_pct_difference_upper"
-            ),
-            ((pl.col("conditional_cv_ratio") - 1) * 100).alias(
-                "conditional_cv_pct_change"
-            ),
-            ((pl.col("conditional_variance_ratio") - 1) * 100).alias(
-                "conditional_variance_pct_difference"
-            ),
-            ((pl.col("conditional_variance_ratio_hdi_lower") - 1) * 100).alias(
-                "conditional_variance_pct_difference_lower"
-            ),
-            ((pl.col("conditional_variance_ratio_hdi_upper") - 1) * 100).alias(
-                "conditional_variance_pct_difference_upper"
-            ),
-        )
+    return table.with_columns(
+        pl.col("estimate").exp().alias("shape_ratio"),
+        pl.col("hdi_lower").exp().alias("shape_ratio_hdi_lower"),
+        pl.col("hdi_upper").exp().alias("shape_ratio_hdi_upper"),
+        (-0.5 * pl.col("estimate")).exp().alias("conditional_cv_ratio"),
+        (-0.5 * pl.col("hdi_upper"))
+        .exp()
+        .alias("conditional_cv_ratio_hdi_lower"),
+        (-0.5 * pl.col("hdi_lower"))
+        .exp()
+        .alias("conditional_cv_ratio_hdi_upper"),
+        (-pl.col("estimate")).exp().alias("conditional_variance_ratio"),
+        (-pl.col("hdi_upper"))
+        .exp()
+        .alias("conditional_variance_ratio_hdi_lower"),
+        (-pl.col("hdi_lower"))
+        .exp()
+        .alias("conditional_variance_ratio_hdi_upper"),
+    ).with_columns(
+        ((pl.col("conditional_cv_ratio") - 1) * 100).alias(
+            "conditional_cv_pct_difference"
+        ),
+        ((pl.col("conditional_cv_ratio_hdi_lower") - 1) * 100).alias(
+            "conditional_cv_pct_difference_lower"
+        ),
+        ((pl.col("conditional_cv_ratio_hdi_upper") - 1) * 100).alias(
+            "conditional_cv_pct_difference_upper"
+        ),
+        ((pl.col("conditional_cv_ratio") - 1) * 100).alias(
+            "conditional_cv_pct_change"
+        ),
+        ((pl.col("conditional_variance_ratio") - 1) * 100).alias(
+            "conditional_variance_pct_difference"
+        ),
+        ((pl.col("conditional_variance_ratio_hdi_lower") - 1) * 100).alias(
+            "conditional_variance_pct_difference_lower"
+        ),
+        ((pl.col("conditional_variance_ratio_hdi_upper") - 1) * 100).alias(
+            "conditional_variance_pct_difference_upper"
+        ),
     )
 
 
@@ -586,10 +665,14 @@ def _finalize_table(
         column for column in expected_columns if column not in table.columns
     ]
     if missing_columns:
-        raise RuntimeError(f"Generated table is missing columns: {missing_columns}.")
+        raise RuntimeError(
+            f"Generated table is missing columns: {missing_columns}."
+        )
     result = table.select(expected_columns)
     if result.columns != list(expected_columns):
-        raise RuntimeError("Generated table does not match the required schema.")
+        raise RuntimeError(
+            "Generated table does not match the required schema."
+        )
     return result
 
 

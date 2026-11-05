@@ -37,9 +37,7 @@ def _resolve_group_columns(
     )
     if not possession_columns:
         raise ValueError("At least one possession group is required.")
-    if not all(
-        isinstance(column, str) for column in possession_columns
-    ):
+    if not all(isinstance(column, str) for column in possession_columns):
         raise TypeError("Possession group names must be strings.")
     if any(not column for column in possession_columns):
         raise ValueError("Possession group names cannot be empty.")
@@ -53,9 +51,7 @@ def _resolve_group_columns(
     ]
     if missing_columns:
         missing = ", ".join(missing_columns)
-        raise ValueError(
-            f"Missing ball metric group columns: {missing}."
-        )
+        raise ValueError(f"Missing ball metric group columns: {missing}.")
 
     return group_columns
 
@@ -78,36 +74,26 @@ def _validate_displacement_schema(df: pl.LazyFrame) -> pl.LazyFrame:
     if not isinstance(ball_dtype, pl.Struct):
         raise TypeError(f"{_BALL_COLUMN} must be a struct column.")
 
-    ball_fields = {
-        field.name: field.dtype for field in ball_dtype.fields
-    }
+    ball_fields = {field.name: field.dtype for field in ball_dtype.fields}
     missing_fields = [
         field for field in ("x", "y") if field not in ball_fields
     ]
     if missing_fields:
         missing = ", ".join(missing_fields)
-        raise ValueError(
-            f"{_BALL_COLUMN} is missing fields: {missing}."
-        )
+        raise ValueError(f"{_BALL_COLUMN} is missing fields: {missing}.")
 
     nonnumeric_fields = [
-        field
-        for field in ("x", "y")
-        if not ball_fields[field].is_numeric()
+        field for field in ("x", "y") if not ball_fields[field].is_numeric()
     ]
     if nonnumeric_fields:
         invalid = ", ".join(nonnumeric_fields)
-        raise TypeError(
-            f"{_BALL_COLUMN} fields must be numeric: {invalid}."
-        )
+        raise TypeError(f"{_BALL_COLUMN} fields must be numeric: {invalid}.")
 
     if (
         SYNTHETIC_PASS_END_COLUMN in schema
         and schema[SYNTHETIC_PASS_END_COLUMN] != pl.Boolean
     ):
-        raise TypeError(
-            f"{SYNTHETIC_PASS_END_COLUMN} must be Boolean."
-        )
+        raise TypeError(f"{SYNTHETIC_PASS_END_COLUMN} must be Boolean.")
 
     return df
 
@@ -152,10 +138,9 @@ def _add_metric_frame_marker(
     )
 
     return with_input_order.with_columns(
-        (
-            valid_partition
-            & (input_order == selected_order)
-        ).alias(_IS_METRIC_FRAME_COLUMN)
+        (valid_partition & (input_order == selected_order)).alias(
+            _IS_METRIC_FRAME_COLUMN
+        )
     )
 
 
@@ -186,6 +171,7 @@ def add_ball_displacement(
 
     Returns:
         The lazy input with four row-level movement columns added.
+
     """
     group_columns = _resolve_group_columns(df, possession_groups)
     order_columns = (_FRAME_COLUMN, _METRIC_INPUT_ORDER_COLUMN)
@@ -201,9 +187,13 @@ def add_ball_displacement(
             pl.col(_FRAME_COLUMN).alias("frame"),
         )
     )
-    previous_state = metric_state.forward_fill().shift().over(
-        group_columns,
-        order_by=order_columns,
+    previous_state = (
+        metric_state.forward_fill()
+        .shift()
+        .over(
+            group_columns,
+            order_by=order_columns,
+        )
     )
     previous_x = previous_state.struct.field("x")
     previous_y = previous_state.struct.field("y")
@@ -221,9 +211,9 @@ def add_ball_displacement(
             delta_x.alias("delta_x"),
             delta_y.alias("delta_y"),
             delta_frame.alias("delta_frame"),
-            (
-                delta_x.pow(2) + delta_y.pow(2)
-            ).sqrt().alias("ball_displacement"),
+            (delta_x.pow(2) + delta_y.pow(2))
+            .sqrt()
+            .alias("ball_displacement"),
         )
         .drop(
             _IS_METRIC_FRAME_COLUMN,
@@ -254,6 +244,7 @@ def add_ball_speed(
     Raises:
         ValueError: If the frame rate or required columns are invalid.
         TypeError: If either input metric column is nonnumeric.
+
     """
     schema = df.collect_schema()
     required_columns = ("ball_displacement", "delta_frame")
@@ -271,9 +262,7 @@ def add_ball_speed(
     ]
     if nonnumeric_columns:
         invalid = ", ".join(nonnumeric_columns)
-        raise TypeError(
-            f"Ball speed columns must be numeric: {invalid}."
-        )
+        raise TypeError(f"Ball speed columns must be numeric: {invalid}.")
 
     with_frame_rate = add_frame_rate_column(df, frame_rate)
     valid_frame_delta = pl.col("delta_frame") > 0
@@ -305,8 +294,8 @@ def add_ball_metrics(
 
     Returns:
         The lazy input with displacement and speed columns added.
+
     """
-    return (
-        df.pipe(add_ball_displacement, possession_groups)
-        .pipe(add_ball_speed, frame_rate=frame_rate)
+    return df.pipe(add_ball_displacement, possession_groups).pipe(
+        add_ball_speed, frame_rate=frame_rate
     )

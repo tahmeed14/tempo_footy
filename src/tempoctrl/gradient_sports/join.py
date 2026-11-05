@@ -1,3 +1,5 @@
+"""Join Gradient Sports tracking and event data."""
+
 from pathlib import Path
 
 import polars as pl
@@ -6,7 +8,7 @@ JOIN_KEYS = ("game_id", "game_event_id", "possession_event_id")
 JOIN_ISSUES_DIR = Path("data/investigate/join_issues")
 JOIN_KEY_COUNT_COLUMN = "join_key_count"
 
-#FIXME:
+# FIXME:
 KEEP_EVENT_COLUMNS = (
     *JOIN_KEYS,
     "formattedgameclock",
@@ -21,6 +23,7 @@ KEEP_EVENT_COLUMNS = (
     "possession_event_type",
     "successful_pass_or_cross",
 )
+
 
 def _save_duplicate_event_join_rows(
     df_events: pl.LazyFrame,
@@ -49,8 +52,7 @@ def _scan_processed_match(
 ) -> pl.LazyFrame:
     """Validate and lazily scan one processed match file."""
     data_path = Path(
-        f"data/processed/gradient_sports/{dataset_name}/"
-        f"{match_id}.parquet"
+        f"data/processed/gradient_sports/{dataset_name}/{match_id}.parquet"
     )
 
     if not data_path.is_file():
@@ -121,9 +123,7 @@ def possession_load(
     overwrite: bool = False,
 ) -> Path:
     """Join and save integrated possession data, returning its path."""
-    output_path = Path(
-        f"data/integrated/gradient_sports/{match_id}.parquet"
-    )
+    output_path = Path(f"data/integrated/gradient_sports/{match_id}.parquet")
 
     if output_path.is_file() and not overwrite:
         return output_path

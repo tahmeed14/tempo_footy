@@ -9,12 +9,8 @@ from tempoctrl.pipeline_runtime import format_pipeline_runtime
 
 logger = logging.getLogger(__name__)
 PIPELINE_DIVIDER = "=" * 72
-PROCESSED_EVENTS_DIRECTORY = Path(
-    "data/processed/gradient_sports/events"
-)
-PROCESSED_TRACKING_DIRECTORY = Path(
-    "data/processed/gradient_sports/tracking"
-)
+PROCESSED_EVENTS_DIRECTORY = Path("data/processed/gradient_sports/events")
+PROCESSED_TRACKING_DIRECTORY = Path("data/processed/gradient_sports/tracking")
 
 
 def configure_logging() -> None:

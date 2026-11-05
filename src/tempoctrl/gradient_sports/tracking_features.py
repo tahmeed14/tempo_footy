@@ -9,7 +9,6 @@ from tempoctrl.gradient_sports.players import (
     scan_player_game_lookup,
 )
 
-
 METADATA_DIRECTORY = Path("data/raw/gradient_sports/metadata")
 
 TRACKING_PLAYER_COLUMNS = (
@@ -41,6 +40,7 @@ def read_tracking_team_file(metadata_path: str | Path) -> pl.DataFrame:
     Raises:
         ValueError: If the file does not contain exactly one game or its
             filename does not match the metadata game ID.
+
     """
     metadata_path = Path(metadata_path)
     df_metadata = pl.read_json(metadata_path, infer_schema_length=None)
@@ -61,18 +61,12 @@ def read_tracking_team_file(metadata_path: str | Path) -> pl.DataFrame:
     df_home = df_metadata.select(
         pl.col("id").cast(pl.Int64).alias("game_id"),
         pl.lit("home").alias("team_side"),
-        pl.col("homeTeam")
-        .struct.field("id")
-        .cast(pl.Int64)
-        .alias("team_id"),
+        pl.col("homeTeam").struct.field("id").cast(pl.Int64).alias("team_id"),
     )
     df_away = df_metadata.select(
         pl.col("id").cast(pl.Int64).alias("game_id"),
         pl.lit("away").alias("team_side"),
-        pl.col("awayTeam")
-        .struct.field("id")
-        .cast(pl.Int64)
-        .alias("team_id"),
+        pl.col("awayTeam").struct.field("id").cast(pl.Int64).alias("team_id"),
     )
     return pl.concat((df_home, df_away), how="vertical")
 
@@ -92,6 +86,7 @@ def build_tracking_team_lookup(
         FileNotFoundError: If the directory or metadata files are
             absent.
         ValueError: If team IDs are null or side keys are duplicated.
+
     """
     metadata_dir = Path(metadata_dir)
     if not metadata_dir.is_dir():
@@ -162,6 +157,7 @@ def tracking_to_player_rows(
 
     Raises:
         ValueError: If required tracking columns are missing.
+
     """
     tracking_schema = df_tracking.collect_schema()
     required_columns = ("game_id", *TRACKING_PLAYER_COLUMNS)
@@ -173,8 +169,7 @@ def tracking_to_player_rows(
     if missing_columns:
         formatted_columns = ", ".join(missing_columns)
         raise ValueError(
-            f"Tracking data is missing required columns: "
-            f"{formatted_columns}"
+            f"Tracking data is missing required columns: {formatted_columns}"
         )
 
     frame_columns = tuple(
@@ -218,12 +213,11 @@ def add_tracking_player_features(
     Returns:
         Lazy player-level tracking with team, player, opponent, and
         position identifiers.
+
     """
     df_players = tracking_to_player_rows(df_tracking)
     if df_team_lookup is None:
-        df_team_lookup = build_tracking_team_lookup(
-            metadata_dir
-        ).lazy()
+        df_team_lookup = build_tracking_team_lookup(metadata_dir).lazy()
     if df_player_lookup is None:
         df_player_lookup = scan_player_game_lookup()
 
@@ -268,8 +262,7 @@ def add_tracking_player_features(
     if missing_player_columns:
         formatted_columns = ", ".join(missing_player_columns)
         raise ValueError(
-            f"Player lookup is missing tracking columns: "
-            f"{formatted_columns}"
+            f"Player lookup is missing tracking columns: {formatted_columns}"
         )
 
     player_key_expressions = [

@@ -1,10 +1,11 @@
+"""Load Gradient Sports tracking data."""
+
 from pathlib import Path
 
 import polars as pl
 
-COLUMN_ORDER = (
+COLUMN_ORDER = ()
 
-)
 
 def load_tracking(
     df_in: pl.LazyFrame,
@@ -12,7 +13,6 @@ def load_tracking(
     overwrite: bool = False,
 ) -> Path:
     """Write processed tracking data and return its output path."""
-
     out_path = Path(
         f"data/processed/gradient_sports/tracking/{match_id}.parquet"
     )

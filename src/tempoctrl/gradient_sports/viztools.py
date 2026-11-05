@@ -11,7 +11,6 @@ import pandas as pd
 from matplotlib.animation import FuncAnimation
 from mplsoccer import Pitch
 
-
 DEFAULT_DATA_PATH = Path("data/model/dev.parquet")
 PITCH_LENGTH = 105.0
 PITCH_WIDTH = 68.0
@@ -84,10 +83,11 @@ def plot_dev_frame(
 ) -> tuple[plt.Figure, plt.Axes]:
     """Plot home players, away players, and the ball for one frame.
 
-    Example
+    Example:
     -------
     >>> from tempoctrl.gradient_sports.viztools import plot_dev_frame
     >>> plot_dev_frame(game_id=10517, possession_ids="some-id", frame_id=12345)
+
     """
     row = load_dev_frame(
         data_path,
@@ -135,7 +135,9 @@ def plot_dev_frame(
     )
 
     ax.set_title(f"Game {game_id} | Frame {frame_id}", fontsize=14, pad=12)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False)
+    ax.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False
+    )
     fig.tight_layout()
     return fig, ax
 
@@ -165,12 +167,22 @@ def animate_dev_frames(
     The returned ``FuncAnimation`` displays in a notebook when it is the last
     expression in a cell, or can be rendered with ``animation.to_jshtml()``.
     """
-    if frame_ids is not None and (start_frame is not None or end_frame is not None):
+    if frame_ids is not None and (
+        start_frame is not None or end_frame is not None
+    ):
         raise ValueError("Use frame_ids or start_frame/end_frame, not both.")
     if frame_ids is None and (start_frame is None or end_frame is None):
-        raise ValueError("Provide frame_ids or both start_frame and end_frame.")
-    if start_frame is not None and end_frame is not None and start_frame > end_frame:
-        raise ValueError("start_frame must be less than or equal to end_frame.")
+        raise ValueError(
+            "Provide frame_ids or both start_frame and end_frame."
+        )
+    if (
+        start_frame is not None
+        and end_frame is not None
+        and start_frame > end_frame
+    ):
+        raise ValueError(
+            "start_frame must be less than or equal to end_frame."
+        )
 
     frames = _load_dev_frames(
         data_path,
@@ -195,28 +207,93 @@ def animate_dev_frames(
         pitch.draw(ax=ax)
     fig = ax.figure
 
-    home_scatter = ax.scatter([], [], s=360, c=home_color, edgecolors="#fffdf5", linewidths=1.2, label="Home", zorder=3)
-    away_scatter = ax.scatter([], [], s=360, c=away_color, edgecolors="#fffdf5", linewidths=1.2, label="Away", zorder=3)
-    ball_scatter = ax.scatter([], [], s=ball_size, c=ball_color, edgecolors="#20251f", linewidths=1.5, label="Ball", zorder=5)
-    home_labels = _make_animation_labels(ax, frames["home_players_smooth"], show_labels)
-    away_labels = _make_animation_labels(ax, frames["away_players_smooth"], show_labels)
+    home_scatter = ax.scatter(
+        [],
+        [],
+        s=360,
+        c=home_color,
+        edgecolors="#fffdf5",
+        linewidths=1.2,
+        label="Home",
+        zorder=3,
+    )
+    away_scatter = ax.scatter(
+        [],
+        [],
+        s=360,
+        c=away_color,
+        edgecolors="#fffdf5",
+        linewidths=1.2,
+        label="Away",
+        zorder=3,
+    )
+    ball_scatter = ax.scatter(
+        [],
+        [],
+        s=ball_size,
+        c=ball_color,
+        edgecolors="#20251f",
+        linewidths=1.5,
+        label="Ball",
+        zorder=5,
+    )
+    home_labels = _make_animation_labels(
+        ax, frames["home_players_smooth"], show_labels
+    )
+    away_labels = _make_animation_labels(
+        ax, frames["away_players_smooth"], show_labels
+    )
 
     def update(frame_index: int) -> tuple[Any, ...]:
         row = frames.iloc[frame_index]
         artists: list[Any] = [home_scatter, away_scatter, ball_scatter]
-        artists.extend(_update_players(home_scatter, home_labels, row["home_players_smooth"], show_estimated))
-        artists.extend(_update_players(away_scatter, away_labels, row["away_players_smooth"], show_estimated))
+        artists.extend(
+            _update_players(
+                home_scatter,
+                home_labels,
+                row["home_players_smooth"],
+                show_estimated,
+            )
+        )
+        artists.extend(
+            _update_players(
+                away_scatter,
+                away_labels,
+                row["away_players_smooth"],
+                show_estimated,
+            )
+        )
         ball = row["balls_smooth"]
-        if ball and ball.get("x") is not None and ball.get("y") is not None and (show_estimated or ball.get("visibility") == "VISIBLE"):
-            ball_scatter.set_offsets([[ball["x"] + X_OFFSET, ball["y"] + Y_OFFSET]])
+        if (
+            ball
+            and ball.get("x") is not None
+            and ball.get("y") is not None
+            and (show_estimated or ball.get("visibility") == "VISIBLE")
+        ):
+            ball_scatter.set_offsets(
+                [[ball["x"] + X_OFFSET, ball["y"] + Y_OFFSET]]
+            )
         else:
             ball_scatter.set_offsets([])
-        ax.set_title(f"Game {game_id} | Frame {int(row['framenum'])}", fontsize=14, pad=12)
+        ax.set_title(
+            f"Game {game_id} | Frame {int(row['framenum'])}",
+            fontsize=14,
+            pad=12,
+        )
         return tuple(artists)
 
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False)
+    ax.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False
+    )
     fig.tight_layout()
-    return FuncAnimation(fig, update, frames=len(frames), interval=interval, blit=False, repeat=True)
+    return FuncAnimation(
+        fig,
+        update,
+        frames=len(frames),
+        interval=interval,
+        blit=False,
+        repeat=True,
+    )
 
 
 def _load_dev_frames(
@@ -253,7 +330,9 @@ def _load_dev_frames(
         frames = frames[frames["framenum"].isin(list(frame_ids))]
     frames = frames.sort_values("framenum").reset_index(drop=True)
     if frames.empty:
-        raise ValueError("No development frames matched the requested selection.")
+        raise ValueError(
+            "No development frames matched the requested selection."
+        )
     return frames
 
 
@@ -265,11 +344,24 @@ def _make_animation_labels(
     if not show_labels:
         return []
     max_players = max(
-        (len(players) if players is not None else 0 for players in player_frames),
+        (
+            len(players) if players is not None else 0
+            for players in player_frames
+        ),
         default=0,
     )
     return [
-        ax.text(0, 0, "", color="white", ha="center", va="center", fontsize=8, fontweight="bold", zorder=4)
+        ax.text(
+            0,
+            0,
+            "",
+            color="white",
+            ha="center",
+            va="center",
+            fontsize=8,
+            fontweight="bold",
+            zorder=4,
+        )
         for _ in range(max_players)
     ]
 
@@ -286,14 +378,19 @@ def _update_players(
         if show_estimated or player.get("visibility") == "VISIBLE"
     ]
     scatter.set_offsets(
-        [[player["x"] + X_OFFSET, player["y"] + Y_OFFSET] for player in visible_players]
+        [
+            [player["x"] + X_OFFSET, player["y"] + Y_OFFSET]
+            for player in visible_players
+        ]
         if visible_players
         else []
     )
     for index, label in enumerate(labels):
         if index < len(visible_players):
             player = visible_players[index]
-            label.set_position((player["x"] + X_OFFSET, player["y"] + Y_OFFSET))
+            label.set_position(
+                (player["x"] + X_OFFSET, player["y"] + Y_OFFSET)
+            )
             label.set_text(str(player.get("jerseyNum", "")))
             label.set_visible(True)
         else:

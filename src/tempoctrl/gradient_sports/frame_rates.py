@@ -36,10 +36,7 @@ def _validate_frame_rate_spec(frame_rate: FrameRateSpec) -> None:
     )
     if not rates:
         raise ValueError("frame_rate mapping cannot be empty.")
-    if any(
-        not math.isfinite(rate) or rate <= 0
-        for rate in rates
-    ):
+    if any(not math.isfinite(rate) or rate <= 0 for rate in rates):
         raise ValueError(
             "frame_rate values must be finite and greater than 0."
         )
@@ -61,14 +58,13 @@ def add_frame_rate_column(
 
     Returns:
         The lazy input with a Float64 ``frame_rate`` column.
+
     """
     _validate_frame_rate_spec(frame_rate)
 
     if isinstance(frame_rate, Mapping):
         if GAME_COLUMN not in df.collect_schema():
-            raise ValueError(
-                "game_id is required for per-game frame rates."
-            )
+            raise ValueError("game_id is required for per-game frame rates.")
         frame_rate_expression = pl.col(GAME_COLUMN).replace_strict(
             dict(frame_rate),
             return_dtype=pl.Float64,
@@ -79,9 +75,7 @@ def add_frame_rate_column(
             dtype=pl.Float64,
         )
 
-    return df.with_columns(
-        frame_rate_expression.alias(FRAME_RATE_COLUMN)
-    )
+    return df.with_columns(frame_rate_expression.alias(FRAME_RATE_COLUMN))
 
 
 def _read_metadata_frame_rate(
@@ -96,9 +90,7 @@ def _read_metadata_frame_rate(
             f"found {metadata.height}."
         )
     if "fps" not in metadata.columns:
-        raise ValueError(
-            f"Metadata for game {game_id} is missing fps."
-        )
+        raise ValueError(f"Metadata for game {game_id} is missing fps.")
 
     frame_rate = metadata.item(0, "fps")
     if (
@@ -140,6 +132,7 @@ def resolve_gradient_sports_frame_rates(
     Raises:
         FileNotFoundError: If the match path or parquet files are missing.
         ValueError: If filenames or existing metadata are invalid.
+
     """
     _validate_frame_rate_spec(default_frame_rate)
     if isinstance(match_dir, (str, Path)):
@@ -147,8 +140,7 @@ def resolve_gradient_sports_frame_rates(
         if integrated_path.is_file():
             if integrated_path.suffix != ".parquet":
                 raise ValueError(
-                    "Integrated match file must be Parquet: "
-                    f"{integrated_path}"
+                    f"Integrated match file must be Parquet: {integrated_path}"
                 )
             match_files = [integrated_path]
         elif integrated_path.is_dir():
@@ -175,8 +167,7 @@ def resolve_gradient_sports_frame_rates(
 
     if not match_files:
         raise FileNotFoundError(
-            f"No integrated match parquet files found in: "
-            f"{match_dir}"
+            f"No integrated match parquet files found in: {match_dir}"
         )
 
     metadata_directory = Path(metadata_dir)

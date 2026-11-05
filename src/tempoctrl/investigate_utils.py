@@ -1,3 +1,5 @@
+"""Provide data-investigation helpers."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -36,6 +38,7 @@ def get_rows_with_context(
     pl.DataFrame
         A dataframe containing the matched rows and their surrounding context,
         in the same order as the original dataframe.
+
     """
     if n < 0:
         raise ValueError("n must be greater than or equal to 0")
@@ -50,13 +53,15 @@ def get_rows_with_context(
 
     condition = None
     for value in values:
-        current = pl.col(column_name).is_null() if value is None else pl.col(column_name) == value
+        current = (
+            pl.col(column_name).is_null()
+            if value is None
+            else pl.col(column_name) == value
+        )
         condition = current if condition is None else (condition | current)
 
     matched_indices = (
-        indexed_df.filter(condition)
-        .get_column("__row_idx")
-        .to_list()
+        indexed_df.filter(condition).get_column("__row_idx").to_list()
     )
 
     if not matched_indices:
@@ -84,8 +89,7 @@ def column_missingness(df: pl.DataFrame) -> pl.DataFrame:
     null_counts = df.null_count().row(0)
     row_count = df.height
     missing_percent = [
-        count / row_count * 100 if row_count else None
-        for count in null_counts
+        count / row_count * 100 if row_count else None for count in null_counts
     ]
 
     return pl.DataFrame(
@@ -119,6 +123,7 @@ def summarize_variables(
     Returns:
         A dictionary containing ``continuous`` and ``categorical``
         DataFrames. Percentages are on a 0-to-100 scale.
+
     """
     categorical_overrides = set(categorical_columns or [])
     missing_columns = categorical_overrides.difference(df.columns)
@@ -223,9 +228,6 @@ def summarize_variables(
         "continuous": continuous_summary,
         "categorical": categorical_summary,
     }
-
-
-import polars as pl
 
 
 def _flip_if_attacking_left(field: str) -> pl.Expr:

@@ -40,9 +40,7 @@ VARIABLE_LABELS = {
     "ball_speed_tempo_player": "Ball-speed tempo",
     "game_state_goal_diff": "Goal difference",
     "first_touch_ballheight": "Ball height at first touch",
-    "first_touch_defender_pressure_type": (
-        "Defender pressure at first touch"
-    ),
+    "first_touch_defender_pressure_type": ("Defender pressure at first touch"),
     "defender_num_challenges": "Number of defender challenges",
     "starting_pitch_third": "Starting pitch third",
     "player_position_group": "Player position group",
@@ -142,6 +140,7 @@ def generate_model_summary_statistics(
     -------
     polars.DataFrame
         Long-form sample, variable, frequency, and group-size summaries.
+
     """
     frame, category_orders = _normalize_model_dataframe(model_df)
     _validate_model_dataframe(frame)
@@ -220,9 +219,7 @@ def _normalize_model_dataframe(
         if dtype in {pl.Float32, pl.Float64}
     ]
     if float_columns:
-        frame = frame.with_columns(
-            pl.col(float_columns).fill_nan(None)
-        )
+        frame = frame.with_columns(pl.col(float_columns).fill_nan(None))
     return frame, category_orders
 
 
@@ -350,9 +347,7 @@ def _append_categorical_rows(
         count = counts[level]
         percentage = 100 * count / non_missing_count
         is_reference = (
-            level == reference_level
-            if reference_level is not None
-            else None
+            level == reference_level if reference_level is not None else None
         )
         rows.append(
             _make_row(

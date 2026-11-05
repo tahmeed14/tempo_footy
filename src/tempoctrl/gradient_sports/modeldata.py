@@ -6,9 +6,7 @@ from pathlib import Path
 import polars as pl
 
 EVENTS_PATH = Path("data/processed/gradient_sports/events")
-PLAYER_POSSESSIONS_PATH = Path(
-    "data/analysis/player_possessions.parquet"
-)
+PLAYER_POSSESSIONS_PATH = Path("data/analysis/player_possessions.parquet")
 POSSESSION_LOOKUP_PATH = Path(
     "data/curated/gradient_sports/possession_lookup/"
     "match_possession_lookup.parquet"
@@ -107,9 +105,8 @@ def build_modeldata(
     df_possession_lookup: pl.LazyFrame,
 ) -> pl.LazyFrame:
     """Build model data from player possessions, events, and metadata."""
-    return (
-        df_player_possessions.pipe(join_event_features, df_events)
-        .pipe(join_possession_lookup, df_possession_lookup)
+    return df_player_possessions.pipe(join_event_features, df_events).pipe(
+        join_possession_lookup, df_possession_lookup
     )
 
 
@@ -122,9 +119,9 @@ def load_modeldata(
     """Build model data from selected inputs and return its output path."""
     output_path = Path(output_path)
     df_events = pl.scan_parquet(events_path).pipe(prepare_events)
-    df_player_possessions = pl.scan_parquet(
-        player_possessions_path
-    ).select(POSSESSION_COLUMNS)
+    df_player_possessions = pl.scan_parquet(player_possessions_path).select(
+        POSSESSION_COLUMNS
+    )
     df_possession_lookup = pl.scan_parquet(possession_lookup_path).drop(
         LOOKUP_IDENTITY_COLUMNS
     )

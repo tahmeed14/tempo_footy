@@ -36,7 +36,8 @@ def load_posterior_idata(
         idata.close()
         raise ValueError(
             f"{Path(path)} does not contain a posterior group. "
-            "Use tempo_gamma_posterior.nc rather than the prior-predictive file."
+            "Use tempo_gamma_posterior.nc rather than the "
+            "prior-predictive file."
         )
     return idata
 
@@ -91,7 +92,9 @@ def transform_overlap_to_percentage_effects(
         "shape_p_gt_zero",
         "shape_credible",
     }
-    missing_columns = sorted(required_columns.difference(overlap_table.columns))
+    missing_columns = sorted(
+        required_columns.difference(overlap_table.columns)
+    )
     if missing_columns:
         raise KeyError(
             f"overlap_table is missing required columns: {missing_columns}."

@@ -45,9 +45,7 @@ def run_pipeline(
     )
     for resolution in resolutions:
         log = (
-            logger.info
-            if resolution.source == "metadata"
-            else logger.warning
+            logger.info if resolution.source == "metadata" else logger.warning
         )
         log(
             "Using %.3f FPS for match %d (source: %s)",
@@ -57,8 +55,7 @@ def run_pipeline(
         )
 
     frame_rates: FrameRateSpec = {
-        resolution.game_id: resolution.frame_rate
-        for resolution in resolutions
+        resolution.game_id: resolution.frame_rate for resolution in resolutions
     }
     output_paths = possessions_load(
         df_path=df_path,

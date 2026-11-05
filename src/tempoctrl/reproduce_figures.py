@@ -1,7 +1,10 @@
+"""Reproduce figures used in the project paper."""
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
+from matplotlib.figure import Figure
 
 from tempoctrl.reproduce_distribution_visuals import (
     DEFAULT_ALPHA_PLAYER_FIGURE,
@@ -12,9 +15,9 @@ from tempoctrl.reproduce_distribution_visuals import (
 )
 from tempoctrl.reproduce_tables import MODEL_DATA_PATH
 from tempoctrl.visualize.possessions import (
-    plot_dev_start_frame,
     plot_dev_players_to_pass,
     plot_dev_possession_movement,
+    plot_dev_start_frame,
 )
 from tempoctrl.visualize.summary_statistics import plot_histogram
 
@@ -26,11 +29,12 @@ FIGURES_PATH = "paper/figures"
 
 
 def save_quarto_figure(
-    fig,
+    fig: Figure,
     filename: str,
     output_dir: str = FIGURES_PATH,
     dpi: int = 300,
-):
+) -> None:
+    """Save a figure in PDF and PNG formats for Quarto."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -48,7 +52,7 @@ def save_quarto_figure(
     )
 
 
-def ball_speed_tempo_histograms():
+def ball_speed_tempo_histograms() -> None:
     """Save the ball-speed tempo distribution at each paper figure size."""
     model_df = pl.read_parquet(
         MODEL_DATA_PATH,
@@ -76,7 +80,8 @@ def ball_speed_tempo_histograms():
         plt.close(ax.figure)
 
 
-def possession_example():
+def possession_example() -> None:
+    """Save figures illustrating an example possession."""
     start_frame, start_ax = plot_dev_start_frame(
         data_path=POSS_EXAMPLE,
         game_id=10517,
@@ -87,7 +92,7 @@ def possession_example():
         home_color="skyblue",
         away_color="darkblue",
         ball_color="white",
-        title = "Argentina vs France | Player Possession Start",
+        title="Argentina vs France | Player Possession Start",
         # figsize = FIGSIZE_SQUARE
     )
 
@@ -104,7 +109,7 @@ def possession_example():
         ball_start_color="white",
         ball_end_color="gray",
         start_player_size=55,
-        title = "Argentina vs France | Player Attempts Pass"
+        title="Argentina vs France | Player Attempts Pass",
         # figsize = FIGSIZE_SQUARE
     )
 
@@ -119,18 +124,19 @@ def possession_example():
         ball_start_color="white",
         ball_end_color="gray",
         ball_trajectory_color="darkorange",
-        title = "Argentina vs France | Pass Successful to Teammate"
+        title="Argentina vs France | Pass Successful to Teammate",
         # figsize = FIGSIZE_FULL
     )
 
     save_quarto_figure(start_frame, filename="player_possession_start")
     save_quarto_figure(pass_fig, filename="player_possession_pass_attempt")
-    save_quarto_figure(possession_fig, filename="player_possession_pass_success")
+    save_quarto_figure(
+        possession_fig, filename="player_possession_pass_success"
+    )
 
 
-
-
-def main():
+def main() -> None:
+    """Reproduce all paper figures."""
     possession_example()
     ball_speed_tempo_histograms()
 
@@ -142,6 +148,7 @@ def main():
         DEFAULT_POSTERIOR_PATH,
         output_path=DEFAULT_ALPHA_PLAYER_FIGURE,
     )
+
 
 if __name__ == "__main__":
     main()

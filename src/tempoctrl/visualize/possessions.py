@@ -12,7 +12,6 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
 from mplsoccer import Pitch
 
-
 DEFAULT_DATA_PATH = Path("data/analysis/possessions.parquet")
 PITCH_LENGTH = 105.0
 PITCH_WIDTH = 68.0
@@ -90,10 +89,11 @@ def plot_dev_frame(
 ) -> tuple[plt.Figure, plt.Axes]:
     """Plot home players, away players, and the ball for one frame.
 
-    Example
+    Example:
     -------
     >>> from tempoctrl.gradient_sports.viztools import plot_dev_frame
     >>> plot_dev_frame(game_id=10517, possession_ids="some-id", frame_id=12345)
+
     """
     row = load_dev_frame(
         data_path,
@@ -143,7 +143,9 @@ def plot_dev_frame(
     )
 
     ax.set_title(f"Game {game_id} | Frame {frame_id}", fontsize=14, pad=12)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False)
+    ax.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False
+    )
     fig.tight_layout()
     return fig, ax
 
@@ -170,7 +172,9 @@ def plot_dev_start_frame(
         **kwargs,
     )
     ax.set_title(
-        title if title is not None else f"{home_team_name} vs {away_team_name} | Frame {frame_id}",
+        title
+        if title is not None
+        else f"{home_team_name} vs {away_team_name} | Frame {frame_id}",
         fontsize=14,
         pad=12,
     )
@@ -209,7 +213,9 @@ def plot_dev_players_to_pass(
         **kwargs,
     )
     ax.set_title(
-        title if title is not None else f"{home_team_name} vs {away_team_name} | Start to Pass Attempt",
+        title
+        if title is not None
+        else f"{home_team_name} vs {away_team_name} | Start to Pass Attempt",
         fontsize=14,
         pad=12,
     )
@@ -229,7 +235,7 @@ def plot_dev_possession_movement(
     title: str | None = None,
     **kwargs: Any,
 ) -> tuple[plt.Figure, plt.Axes]:
-    """Plot movement and ball trajectory from pass attempt to possession end."""
+    """Plot movement and trajectory from a pass to possession end."""
     if pass_frame is None:
         pass_frame = _resolve_pa_frame(
             data_path,
@@ -257,7 +263,12 @@ def plot_dev_possession_movement(
         **kwargs,
     )
     ax.set_title(
-        title if title is not None else f"{home_team_name} vs {away_team_name} | Pass Attempt to Possession End",
+        title
+        if title is not None
+        else (
+            f"{home_team_name} vs {away_team_name} | "
+            "Pass Attempt to Possession End"
+        ),
         fontsize=14,
         pad=12,
     )
@@ -290,12 +301,22 @@ def animate_dev_frames(
     The returned ``FuncAnimation`` displays in a notebook when it is the last
     expression in a cell, or can be rendered with ``animation.to_jshtml()``.
     """
-    if frame_ids is not None and (start_frame is not None or end_frame is not None):
+    if frame_ids is not None and (
+        start_frame is not None or end_frame is not None
+    ):
         raise ValueError("Use frame_ids or start_frame/end_frame, not both.")
     if frame_ids is None and (start_frame is None or end_frame is None):
-        raise ValueError("Provide frame_ids or both start_frame and end_frame.")
-    if start_frame is not None and end_frame is not None and start_frame > end_frame:
-        raise ValueError("start_frame must be less than or equal to end_frame.")
+        raise ValueError(
+            "Provide frame_ids or both start_frame and end_frame."
+        )
+    if (
+        start_frame is not None
+        and end_frame is not None
+        and start_frame > end_frame
+    ):
+        raise ValueError(
+            "start_frame must be less than or equal to end_frame."
+        )
 
     frames = _load_dev_frames(
         data_path,
@@ -320,28 +341,93 @@ def animate_dev_frames(
         pitch.draw(ax=ax)
     fig = ax.figure
 
-    home_scatter = ax.scatter([], [], s=360, c=home_color, edgecolors="#fffdf5", linewidths=1.2, label="Home", zorder=3)
-    away_scatter = ax.scatter([], [], s=360, c=away_color, edgecolors="#fffdf5", linewidths=1.2, label="Away", zorder=3)
-    ball_scatter = ax.scatter([], [], s=ball_size, c=ball_color, edgecolors="#20251f", linewidths=1.5, label="Ball", zorder=5)
-    home_labels = _make_animation_labels(ax, frames["home_players_smooth"], show_labels)
-    away_labels = _make_animation_labels(ax, frames["away_players_smooth"], show_labels)
+    home_scatter = ax.scatter(
+        [],
+        [],
+        s=360,
+        c=home_color,
+        edgecolors="#fffdf5",
+        linewidths=1.2,
+        label="Home",
+        zorder=3,
+    )
+    away_scatter = ax.scatter(
+        [],
+        [],
+        s=360,
+        c=away_color,
+        edgecolors="#fffdf5",
+        linewidths=1.2,
+        label="Away",
+        zorder=3,
+    )
+    ball_scatter = ax.scatter(
+        [],
+        [],
+        s=ball_size,
+        c=ball_color,
+        edgecolors="#20251f",
+        linewidths=1.5,
+        label="Ball",
+        zorder=5,
+    )
+    home_labels = _make_animation_labels(
+        ax, frames["home_players_smooth"], show_labels
+    )
+    away_labels = _make_animation_labels(
+        ax, frames["away_players_smooth"], show_labels
+    )
 
     def update(frame_index: int) -> tuple[Any, ...]:
         row = frames.iloc[frame_index]
         artists: list[Any] = [home_scatter, away_scatter, ball_scatter]
-        artists.extend(_update_players(home_scatter, home_labels, row["home_players_smooth"], show_estimated))
-        artists.extend(_update_players(away_scatter, away_labels, row["away_players_smooth"], show_estimated))
+        artists.extend(
+            _update_players(
+                home_scatter,
+                home_labels,
+                row["home_players_smooth"],
+                show_estimated,
+            )
+        )
+        artists.extend(
+            _update_players(
+                away_scatter,
+                away_labels,
+                row["away_players_smooth"],
+                show_estimated,
+            )
+        )
         ball = row["balls_smooth"]
-        if ball and ball.get("x") is not None and ball.get("y") is not None and (show_estimated or ball.get("visibility") == "VISIBLE"):
-            ball_scatter.set_offsets([[ball["x"] + X_OFFSET, ball["y"] + Y_OFFSET]])
+        if (
+            ball
+            and ball.get("x") is not None
+            and ball.get("y") is not None
+            and (show_estimated or ball.get("visibility") == "VISIBLE")
+        ):
+            ball_scatter.set_offsets(
+                [[ball["x"] + X_OFFSET, ball["y"] + Y_OFFSET]]
+            )
         else:
             ball_scatter.set_offsets([])
-        ax.set_title(f"Game {game_id} | Frame {int(row['framenum'])}", fontsize=14, pad=12)
+        ax.set_title(
+            f"Game {game_id} | Frame {int(row['framenum'])}",
+            fontsize=14,
+            pad=12,
+        )
         return tuple(artists)
 
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False)
+    ax.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=3, frameon=False
+    )
     fig.tight_layout()
-    return FuncAnimation(fig, update, frames=len(frames), interval=interval, blit=False, repeat=True)
+    return FuncAnimation(
+        fig,
+        update,
+        frames=len(frames),
+        interval=interval,
+        blit=False,
+        repeat=True,
+    )
 
 
 def plot_dev_movement(
@@ -380,12 +466,22 @@ def plot_dev_movement(
     matched between endpoints by jersey number. The returned figure shows
     smaller start markers, normal-sized endpoint markers, and dashed arrows.
     """
-    if frame_ids is not None and (start_frame is not None or end_frame is not None):
+    if frame_ids is not None and (
+        start_frame is not None or end_frame is not None
+    ):
         raise ValueError("Use frame_ids or start_frame/end_frame, not both.")
     if frame_ids is None and (start_frame is None or end_frame is None):
-        raise ValueError("Provide frame_ids or both start_frame and end_frame.")
-    if start_frame is not None and end_frame is not None and start_frame > end_frame:
-        raise ValueError("start_frame must be less than or equal to end_frame.")
+        raise ValueError(
+            "Provide frame_ids or both start_frame and end_frame."
+        )
+    if (
+        start_frame is not None
+        and end_frame is not None
+        and start_frame > end_frame
+    ):
+        raise ValueError(
+            "start_frame must be less than or equal to end_frame."
+        )
 
     frames = _load_dev_frames(
         data_path,
@@ -434,25 +530,91 @@ def plot_dev_movement(
             show_labels=show_labels,
             show_estimated=show_estimated,
         )
-    _plot_endpoint_ball(ax, first_frame["balls_smooth"], ball_start_color, ball_size, show_estimated)
-    _plot_endpoint_ball(ax, last_frame["balls_smooth"], ball_end_color, ball_size, show_estimated)
+    _plot_endpoint_ball(
+        ax,
+        first_frame["balls_smooth"],
+        ball_start_color,
+        ball_size,
+        show_estimated,
+    )
+    _plot_endpoint_ball(
+        ax,
+        last_frame["balls_smooth"],
+        ball_end_color,
+        ball_size,
+        show_estimated,
+    )
     if show_ball_trajectory:
         ball_positions = _ball_positions(frames, show_estimated)
         _plot_ball_segment(ax, ball_positions, ball_trajectory_color)
 
     movement_handles = [
-        Line2D([0], [0], marker="o", color="none", markerfacecolor=ball_start_color, markeredgecolor="#20251f", label="Ball start"),
-        Line2D([0], [0], marker="o", color="none", markerfacecolor=ball_end_color, markeredgecolor="#20251f", label="Ball end"),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=ball_start_color,
+            markeredgecolor="#20251f",
+            label="Ball start",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=ball_end_color,
+            markeredgecolor="#20251f",
+            label="Ball end",
+        ),
     ]
     if show_ball_trajectory:
-        movement_handles.insert(0, Line2D([0], [0], color=ball_trajectory_color, linestyle="--", marker=">", label="Ball movement"))
+        movement_handles.insert(
+            0,
+            Line2D(
+                [0],
+                [0],
+                color=ball_trajectory_color,
+                linestyle="--",
+                marker=">",
+                label="Ball movement",
+            ),
+        )
     if show_home:
-        movement_handles.insert(0, Line2D([0], [0], color=home_color, linestyle="--", marker=">", label=f"{home_team_name} movement"))
+        movement_handles.insert(
+            0,
+            Line2D(
+                [0],
+                [0],
+                color=home_color,
+                linestyle="--",
+                marker=">",
+                label=f"{home_team_name} movement",
+            ),
+        )
     if show_away:
-        movement_handles.insert(1 if show_home else 0, Line2D([0], [0], color=away_color, linestyle="--", marker=">", label=f"{away_team_name} movement"))
-    ax.legend(handles=movement_handles, loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=2, frameon=False)
+        movement_handles.insert(
+            1 if show_home else 0,
+            Line2D(
+                [0],
+                [0],
+                color=away_color,
+                linestyle="--",
+                marker=">",
+                label=f"{away_team_name} movement",
+            ),
+        )
+    ax.legend(
+        handles=movement_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.03),
+        ncol=2,
+        frameon=False,
+    )
     ax.set_title(
-        f"Game {game_id} | Frames {int(first_frame['framenum'])}-{int(last_frame['framenum'])}",
+        f"Game {game_id} | Frames "
+        f"{int(first_frame['framenum'])}-"
+        f"{int(last_frame['framenum'])}",
         fontsize=14,
         pad=12,
     )
@@ -509,9 +671,13 @@ def plot_dev_player_movement(
     if (home_jersey is None) == (away_jersey is None):
         raise ValueError("Provide exactly one of home_jersey or away_jersey.")
     if home_jersey is not None and not show_home:
-        raise ValueError("home_jersey cannot be selected when show_home=False.")
+        raise ValueError(
+            "home_jersey cannot be selected when show_home=False."
+        )
     if away_jersey is not None and not show_away:
-        raise ValueError("away_jersey cannot be selected when show_away=False.")
+        raise ValueError(
+            "away_jersey cannot be selected when show_away=False."
+        )
 
     frames = _load_dev_frames(
         data_path,
@@ -539,23 +705,35 @@ def plot_dev_player_movement(
     first_frame = frames.iloc[0]
     last_frame = frames.iloc[-1]
     selected_color = home_color if home_jersey is not None else away_color
-    selected_team_name = home_team_name if home_jersey is not None else away_team_name
+    selected_team_name = (
+        home_team_name if home_jersey is not None else away_team_name
+    )
     selected_jersey = home_jersey if home_jersey is not None else away_jersey
 
     if show_home:
         _plot_endpoint_players(
-            ax, last_frame["home_players_smooth"], home_color, show_labels, show_estimated,
+            ax,
+            last_frame["home_players_smooth"],
+            home_color,
+            show_labels,
+            show_estimated,
             exclude_jersey=home_jersey,
         )
     if show_away:
         _plot_endpoint_players(
-            ax, last_frame["away_players_smooth"], away_color, show_labels, show_estimated,
+            ax,
+            last_frame["away_players_smooth"],
+            away_color,
+            show_labels,
+            show_estimated,
             exclude_jersey=away_jersey,
         )
     _plot_selected_player_trajectory(
         ax,
         frames,
-        "home_players_smooth" if home_jersey is not None else "away_players_smooth",
+        "home_players_smooth"
+        if home_jersey is not None
+        else "away_players_smooth",
         selected_jersey,
         selected_color,
         start_player_size,
@@ -583,25 +761,124 @@ def plot_dev_player_movement(
 
     pa_frame = _first_pa_frame(frames)
     legend_handles = [
-        Line2D([0], [0], color=selected_color, marker="o", label=f"{selected_team_name} #{selected_jersey}"),
-        Line2D([0], [0], color=selected_color, marker="o", markersize=5, label="Other players: final frame"),
-        Line2D([0], [0], color="white", linestyle="--", label="Ball trajectory before PA"),
-        Line2D([0], [0], color=pa_trajectory_color, linestyle="--", label="Ball trajectory from PA"),
-        Line2D([0], [0], color=pa_trajectory_color, marker="o", markersize=4, label="Ball position after PA"),
-        Line2D([0], [0], marker="o", color="none", markerfacecolor=ball_start_color, markeredgecolor="#20251f", label="Ball start"),
-        Line2D([0], [0], marker="o", color="none", markerfacecolor=ball_end_color, markeredgecolor="#20251f", label="Ball end"),
+        Line2D(
+            [0],
+            [0],
+            color=selected_color,
+            marker="o",
+            label=f"{selected_team_name} #{selected_jersey}",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=selected_color,
+            marker="o",
+            markersize=5,
+            label="Other players: final frame",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color="white",
+            linestyle="--",
+            label="Ball trajectory before PA",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=pa_trajectory_color,
+            linestyle="--",
+            label="Ball trajectory from PA",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=pa_trajectory_color,
+            marker="o",
+            markersize=4,
+            label="Ball position after PA",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=ball_start_color,
+            markeredgecolor="#20251f",
+            label="Ball start",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=ball_end_color,
+            markeredgecolor="#20251f",
+            label="Ball end",
+        ),
     ]
     if show_end_player:
-        legend_handles.insert(1, Line2D([0], [0], color=selected_color, marker="o", markersize=8, label="Selected player end"))
+        legend_handles.insert(
+            1,
+            Line2D(
+                [0],
+                [0],
+                color=selected_color,
+                marker="o",
+                markersize=8,
+                label="Selected player end",
+            ),
+        )
     if show_start_player:
-        legend_handles.insert(1, Line2D([0], [0], color=selected_color, marker="o", markersize=5, label="Selected player start"))
+        legend_handles.insert(
+            1,
+            Line2D(
+                [0],
+                [0],
+                color=selected_color,
+                marker="o",
+                markersize=5,
+                label="Selected player start",
+            ),
+        )
     if show_pa_player and pa_frame is not None:
-        legend_handles.insert(3, Line2D([0], [0], color=selected_color, marker="o", markersize=7, label="Selected player at PA"))
+        legend_handles.insert(
+            3,
+            Line2D(
+                [0],
+                [0],
+                color=selected_color,
+                marker="o",
+                markersize=7,
+                label="Selected player at PA",
+            ),
+        )
     if pa_frame is not None:
-        legend_handles.append(Line2D([0], [0], color=pass_attempt_color, marker="x", markersize=5, label="Pass Attempted"))
-    ax.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, -0.03), ncol=2, frameon=False)
+        legend_handles.append(
+            Line2D(
+                [0],
+                [0],
+                color=pass_attempt_color,
+                marker="x",
+                markersize=5,
+                label="Pass Attempted",
+            )
+        )
+    ax.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.03),
+        ncol=2,
+        frameon=False,
+    )
     ax.set_title(
-        title if title is not None else f"Game {game_id} | Frames {int(first_frame['framenum'])}-{int(last_frame['framenum'])}",
+        title
+        if title is not None
+        else (
+            f"Game {game_id} | Frames "
+            f"{int(first_frame['framenum'])}-"
+            f"{int(last_frame['framenum'])}"
+        ),
         fontsize=14,
         pad=12,
     )
@@ -644,7 +921,9 @@ def _plot_player_movement(
         )
 
     if start_by_jersey:
-        start_positions = [_player_position(player) for player in start_by_jersey.values()]
+        start_positions = [
+            _player_position(player) for player in start_by_jersey.values()
+        ]
         ax.scatter(
             [position[0] for position in start_positions],
             [position[1] for position in start_positions],
@@ -656,7 +935,9 @@ def _plot_player_movement(
             zorder=3,
         )
     if end_by_jersey:
-        end_positions = [_player_position(player) for player in end_by_jersey.values()]
+        end_positions = [
+            _player_position(player) for player in end_by_jersey.values()
+        ]
         ax.scatter(
             [position[0] for position in end_positions],
             [position[1] for position in end_positions],
@@ -718,7 +999,9 @@ def _plot_endpoint_players(
         players_by_jersey.pop(str(exclude_jersey), None)
     if not players_by_jersey:
         return
-    positions = [_player_position(player) for player in players_by_jersey.values()]
+    positions = [
+        _player_position(player) for player in players_by_jersey.values()
+    ]
     ax.scatter(
         [position[0] for position in positions],
         [position[1] for position in positions],
@@ -731,7 +1014,16 @@ def _plot_endpoint_players(
     )
     if show_labels:
         for player in players_by_jersey.values():
-            ax.text(*_player_position(player), str(player.get("jerseyNum", "")), color="white", ha="center", va="center", fontsize=8, fontweight="bold", zorder=5)
+            ax.text(
+                *_player_position(player),
+                str(player.get("jerseyNum", "")),
+                color="white",
+                ha="center",
+                va="center",
+                fontsize=8,
+                fontweight="bold",
+                zorder=5,
+            )
 
 
 def _plot_selected_player_trajectory(
@@ -761,21 +1053,35 @@ def _plot_selected_player_trajectory(
             positions.append((int(row["framenum"]), _player_position(player)))
             final_player = player
     if not positions or final_player is None:
-        raise ValueError(f"No visible player matched jersey {jersey!r} in the selected frames.")
+        raise ValueError(
+            f"No visible player matched jersey {jersey!r} in the "
+            "selected frames."
+        )
     if show_start_player:
-            ax.scatter(
-                *positions[0][1],
-                s=max(start_size, 2.5 * 110),
-                facecolors="none",
-                edgecolors=color,
-                linewidths=2.0,
-                alpha=0.95,
-                zorder=3,
-            )
+        ax.scatter(
+            *positions[0][1],
+            s=max(start_size, 2.5 * 110),
+            facecolors="none",
+            edgecolors=color,
+            linewidths=2.0,
+            alpha=0.95,
+            zorder=3,
+        )
     if show_end_player:
-        ax.scatter(*positions[-1][1], s=end_size, c=color, edgecolors="#fffdf5", linewidths=1.2, alpha=0.9, zorder=4)
+        ax.scatter(
+            *positions[-1][1],
+            s=end_size,
+            c=color,
+            edgecolors="#fffdf5",
+            linewidths=1.2,
+            alpha=0.9,
+            zorder=4,
+        )
     if show_pa_player and pa_frame is not None:
-        pa_position = next((position for frame, position in positions if frame == pa_frame), None)
+        pa_position = next(
+            (position for frame, position in positions if frame == pa_frame),
+            None,
+        )
         if pa_position is not None:
             ax.scatter(
                 *pa_position,
@@ -789,7 +1095,16 @@ def _plot_selected_player_trajectory(
     if show_labels:
         label_size = max(6.0, 8.0 * (end_size / 360.0) ** 0.5)
         if show_end_player:
-            ax.text(*positions[-1][1], str(final_player.get("jerseyNum", jersey)), color="white", ha="center", va="center", fontsize=label_size, fontweight="bold", zorder=6)
+            ax.text(
+                *positions[-1][1],
+                str(final_player.get("jerseyNum", jersey)),
+                color="white",
+                ha="center",
+                va="center",
+                fontsize=label_size,
+                fontweight="bold",
+                zorder=6,
+            )
 
 
 def _plot_ball_trajectory(
@@ -808,38 +1123,115 @@ def _plot_ball_trajectory(
     ball_positions = []
     for _, row in frames.iterrows():
         ball = row["balls_smooth"]
-        if ball and ball.get("x") is not None and ball.get("y") is not None and (show_estimated or ball.get("visibility") == "VISIBLE"):
-            ball_positions.append((int(row["framenum"]), _player_position(ball)))
+        if (
+            ball
+            and ball.get("x") is not None
+            and ball.get("y") is not None
+            and (show_estimated or ball.get("visibility") == "VISIBLE")
+        ):
+            ball_positions.append(
+                (int(row["framenum"]), _player_position(ball))
+            )
     if not ball_positions:
         return
     pa_frames = frames.loc[frames["possession_event_type"] == "PA", "framenum"]
     pa_frame = int(pa_frames.iloc[0]) if not pa_frames.empty else None
     if len(ball_positions) > 1:
-        split_index = next((index for index, (frame, _) in enumerate(ball_positions) if pa_frame is not None and frame >= pa_frame), len(ball_positions) - 1)
-        _plot_ball_segment(ax, ball_positions[: split_index + 1], ball_color if pa_frame is None else "white")
+        split_index = next(
+            (
+                index
+                for index, (frame, _) in enumerate(ball_positions)
+                if pa_frame is not None and frame >= pa_frame
+            ),
+            len(ball_positions) - 1,
+        )
+        _plot_ball_segment(
+            ax,
+            ball_positions[: split_index + 1],
+            ball_color if pa_frame is None else "white",
+        )
         if pa_frame is not None and split_index < len(ball_positions) - 1:
-            _plot_ball_segment(ax, ball_positions[split_index:], pa_trajectory_color)
+            _plot_ball_segment(
+                ax, ball_positions[split_index:], pa_trajectory_color
+            )
             post_pass = ball_positions[split_index:]
-            ax.scatter([position[1][0] for position in post_pass], [position[1][1] for position in post_pass], s=ball_trajectory_size, c=pa_trajectory_color, edgecolors="none", zorder=8)
-    ax.scatter(*ball_positions[0][1], s=ball_size, c=ball_start_color, edgecolors="#20251f", linewidths=1.5, zorder=9)
-    ax.scatter(*ball_positions[-1][1], s=ball_size, c=ball_end_color, edgecolors="#20251f", linewidths=1.5, zorder=9)
+            ax.scatter(
+                [position[1][0] for position in post_pass],
+                [position[1][1] for position in post_pass],
+                s=ball_trajectory_size,
+                c=pa_trajectory_color,
+                edgecolors="none",
+                zorder=8,
+            )
+    ax.scatter(
+        *ball_positions[0][1],
+        s=ball_size,
+        c=ball_start_color,
+        edgecolors="#20251f",
+        linewidths=1.5,
+        zorder=9,
+    )
+    ax.scatter(
+        *ball_positions[-1][1],
+        s=ball_size,
+        c=ball_end_color,
+        edgecolors="#20251f",
+        linewidths=1.5,
+        zorder=9,
+    )
     if pa_frame is not None:
-        pa_position = next((position for frame, position in ball_positions if frame == pa_frame), None)
+        pa_position = next(
+            (
+                position
+                for frame, position in ball_positions
+                if frame == pa_frame
+            ),
+            None,
+        )
         if pa_position is not None:
-            ax.scatter(*pa_position, s=ball_trajectory_size * 1.8, c=pass_attempt_color, marker="x", linewidths=1.2, zorder=10)
-            ax.annotate("Pass Attempted", xy=pa_position, xytext=(5, 5), textcoords="offset points", color=pass_attempt_color, fontsize=8, zorder=10)
+            ax.scatter(
+                *pa_position,
+                s=ball_trajectory_size * 1.8,
+                c=pass_attempt_color,
+                marker="x",
+                linewidths=1.2,
+                zorder=10,
+            )
+            ax.annotate(
+                "Pass Attempted",
+                xy=pa_position,
+                xytext=(5, 5),
+                textcoords="offset points",
+                color=pass_attempt_color,
+                fontsize=8,
+                zorder=10,
+            )
 
 
-def _plot_ball_segment(ax: plt.Axes, positions: list[tuple[int, tuple[float, float]]], color: str) -> None:
+def _plot_ball_segment(
+    ax: plt.Axes, positions: list[tuple[int, tuple[float, float]]], color: str
+) -> None:
     if len(positions) < 2:
         return
     coordinates = [position for _, position in positions]
-    ax.plot([position[0] for position in coordinates], [position[1] for position in coordinates], color=color, linestyle="--", linewidth=1.8, zorder=2)
+    ax.plot(
+        [position[0] for position in coordinates],
+        [position[1] for position in coordinates],
+        color=color,
+        linestyle="--",
+        linewidth=1.8,
+        zorder=2,
+    )
     ax.annotate(
         "",
         xy=coordinates[-1],
         xytext=coordinates[-2],
-        arrowprops={"arrowstyle": "-|>", "color": color, "linestyle": "--", "linewidth": 1.8},
+        arrowprops={
+            "arrowstyle": "-|>",
+            "color": color,
+            "linestyle": "--",
+            "linewidth": 1.8,
+        },
         zorder=3,
     )
 
@@ -868,7 +1260,9 @@ def _resolve_pa_frame(
     )
     pa_frame = _first_pa_frame(frames)
     if pa_frame is None:
-        raise ValueError("No PA possession event was found in the selected possession.")
+        raise ValueError(
+            "No PA possession event was found in the selected possession."
+        )
     return pa_frame
 
 
@@ -896,7 +1290,12 @@ def _ball_positions(
     positions = []
     for _, row in frames.iterrows():
         ball = row["balls_smooth"]
-        if ball and ball.get("x") is not None and ball.get("y") is not None and (show_estimated or ball.get("visibility") == "VISIBLE"):
+        if (
+            ball
+            and ball.get("x") is not None
+            and ball.get("y") is not None
+            and (show_estimated or ball.get("visibility") == "VISIBLE")
+        ):
             positions.append((int(row["framenum"]), _player_position(ball)))
     return positions
 
@@ -956,7 +1355,9 @@ def _load_dev_frames(
         frames = frames[frames["framenum"].isin(list(frame_ids))]
     frames = frames.sort_values("framenum").reset_index(drop=True)
     if frames.empty:
-        raise ValueError("No development frames matched the requested selection.")
+        raise ValueError(
+            "No development frames matched the requested selection."
+        )
     return frames
 
 
@@ -968,11 +1369,24 @@ def _make_animation_labels(
     if not show_labels:
         return []
     max_players = max(
-        (len(players) if players is not None else 0 for players in player_frames),
+        (
+            len(players) if players is not None else 0
+            for players in player_frames
+        ),
         default=0,
     )
     return [
-        ax.text(0, 0, "", color="white", ha="center", va="center", fontsize=8, fontweight="bold", zorder=4)
+        ax.text(
+            0,
+            0,
+            "",
+            color="white",
+            ha="center",
+            va="center",
+            fontsize=8,
+            fontweight="bold",
+            zorder=4,
+        )
         for _ in range(max_players)
     ]
 
@@ -989,14 +1403,19 @@ def _update_players(
         if show_estimated or player.get("visibility") == "VISIBLE"
     ]
     scatter.set_offsets(
-        [[player["x"] + X_OFFSET, player["y"] + Y_OFFSET] for player in visible_players]
+        [
+            [player["x"] + X_OFFSET, player["y"] + Y_OFFSET]
+            for player in visible_players
+        ]
         if visible_players
         else []
     )
     for index, label in enumerate(labels):
         if index < len(visible_players):
             player = visible_players[index]
-            label.set_position((player["x"] + X_OFFSET, player["y"] + Y_OFFSET))
+            label.set_position(
+                (player["x"] + X_OFFSET, player["y"] + Y_OFFSET)
+            )
             label.set_text(str(player.get("jerseyNum", "")))
             label.set_visible(True)
         else:

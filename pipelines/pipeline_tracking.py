@@ -43,8 +43,7 @@ def discover_tracking_files(
     tracking_files = sorted(input_directory.glob("*.jsonl.bz2"))
     if not tracking_files:
         raise FileNotFoundError(
-            "No raw tracking JSONL.BZ2 files found in: "
-            f"{input_directory}"
+            f"No raw tracking JSONL.BZ2 files found in: {input_directory}"
         )
 
     discovered_files: list[tuple[int, Path]] = []

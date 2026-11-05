@@ -1,3 +1,5 @@
+"""Reproduce posterior-distribution figures."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,9 +14,9 @@ from matplotlib.transforms import blended_transform_factory
 from scipy.stats import gaussian_kde
 
 from tempoctrl.visualize.possessions import (
-    plot_dev_start_frame,
     plot_dev_players_to_pass,
-    plot_dev_possession_movement
+    plot_dev_possession_movement,
+    plot_dev_start_frame,
 )
 
 FIGSIZE_FULL = (7.0, 4.5)
@@ -39,13 +41,17 @@ def _load_idata(idata_or_path: Any) -> Any:
     if isinstance(idata_or_path, (str, Path)):
         path = Path(idata_or_path)
         if not path.is_file():
-            raise FileNotFoundError(f"Posterior NetCDF file was not found: {path}.")
+            raise FileNotFoundError(
+                f"Posterior NetCDF file was not found: {path}."
+            )
         idata = az.from_netcdf(path)
     else:
         idata = idata_or_path
 
     if getattr(idata, "posterior", None) is None:
-        raise ValueError("idata_or_path must contain an ArviZ posterior group.")
+        raise ValueError(
+            "idata_or_path must contain an ArviZ posterior group."
+        )
     return idata
 
 
@@ -97,14 +103,18 @@ def _extract_player_random_effect_draws(
             f"found {posterior.dims}."
         )
 
-    player_ids = np.asarray(posterior.coords[level_dimension].values).astype(str)
+    player_ids = np.asarray(posterior.coords[level_dimension].values).astype(
+        str
+    )
     if len(np.unique(player_ids)) != len(player_ids):
         raise ValueError("Posterior player coordinates contain duplicate IDs.")
 
     draws = posterior.transpose("chain", "draw", level_dimension).values
     draws = np.asarray(draws, dtype=float).reshape(-1, len(player_ids))
     if not np.isfinite(draws).all():
-        raise ValueError(f"{variable_name!r} contains non-finite posterior draws.")
+        raise ValueError(
+            f"{variable_name!r} contains non-finite posterior draws."
+        )
     return variable_name, player_ids, draws
 
 
@@ -112,7 +122,9 @@ def _build_player_lookup(metadata_path: str | Path) -> pd.DataFrame:
     """Build a one-row-per-player lookup, rejecting ambiguous metadata."""
     path = Path(metadata_path)
     if not path.is_file():
-        raise FileNotFoundError(f"Player metadata lookup was not found: {path}.")
+        raise FileNotFoundError(
+            f"Player metadata lookup was not found: {path}."
+        )
 
     metadata = pd.read_parquet(path)
     required_columns = ["player_id", "player_name", "team_name"]
@@ -120,7 +132,9 @@ def _build_player_lookup(metadata_path: str | Path) -> pd.DataFrame:
         column for column in required_columns if column not in metadata.columns
     ]
     if missing_columns:
-        raise KeyError(f"Player metadata is missing columns: {missing_columns}.")
+        raise KeyError(
+            f"Player metadata is missing columns: {missing_columns}."
+        )
 
     lookup = metadata.loc[:, required_columns].dropna().drop_duplicates()
     conflicts = lookup.groupby("player_id", dropna=False).agg(
@@ -142,7 +156,9 @@ def _build_player_lookup(metadata_path: str | Path) -> pd.DataFrame:
     )
     lookup["player_id"] = lookup["player_id"].astype(str)
     if lookup["player_id"].duplicated().any():
-        raise ValueError("String-normalized metadata contains duplicate player IDs.")
+        raise ValueError(
+            "String-normalized metadata contains duplicate player IDs."
+        )
     return lookup
 
 
@@ -156,7 +172,11 @@ def _select_top_bottom_players(
     """Select non-overlapping extremes by raw posterior mean."""
     if isinstance(top_n, bool) or not isinstance(top_n, int) or top_n < 0:
         raise ValueError("top_n must be a non-negative integer.")
-    if isinstance(bottom_n, bool) or not isinstance(bottom_n, int) or bottom_n < 0:
+    if (
+        isinstance(bottom_n, bool)
+        or not isinstance(bottom_n, int)
+        or bottom_n < 0
+    ):
         raise ValueError("bottom_n must be a non-negative integer.")
     if top_n + bottom_n == 0:
         raise ValueError("At least one player must be requested.")
@@ -167,7 +187,9 @@ def _select_top_bottom_players(
     bottom_indices = order[:bottom_count]
     remaining = order[bottom_count:]
     top_count = min(top_n, len(remaining))
-    top_indices = remaining[-top_count:] if top_count else np.array([], dtype=int)
+    top_indices = (
+        remaining[-top_count:] if top_count else np.array([], dtype=int)
+    )
     selected = np.concatenate([bottom_indices, top_indices])
 
     if len(np.unique(selected)) != len(selected):
@@ -234,7 +256,9 @@ def _plot_posterior_ridges(
     grid = np.linspace(lower - 0.08 * span, upper + 0.08 * span, 512)
 
     first_group = plot_data["selection_group"].iloc[0]
-    first_group_count = int((plot_data["selection_group"] == first_group).sum())
+    first_group_count = int(
+        (plot_data["selection_group"] == first_group).sum()
+    )
     has_two_groups = plot_data["selection_group"].nunique() == 2
     y_positions = np.arange(len(plot_data), dtype=float)
     if has_two_groups:
@@ -397,8 +421,7 @@ def _prepare_player_effect_plot_data(
     ]
     if not missing.empty:
         raise ValueError(
-            "Metadata is missing for modeled player IDs: "
-            f"{missing.tolist()}."
+            f"Metadata is missing for modeled player IDs: {missing.tolist()}."
         )
 
     semantic_group_order = (
@@ -406,7 +429,9 @@ def _prepare_player_effect_plot_data(
         if component == "mu"
         else {"top": 0, "bottom": 1}
     )
-    group_order = plot_data["selection_group"].map(semantic_group_order).to_numpy()
+    group_order = (
+        plot_data["selection_group"].map(semantic_group_order).to_numpy()
+    )
     order = np.lexsort(
         (
             plot_data["player_id"].to_numpy(),
@@ -445,7 +470,9 @@ def plot_top_bottom_mu_player_effects(
             "player random effects"
         ),
         xlabel="Player effect on expected tempo (%)",
-        direction_label="Lower expected tempo ←    0    → Higher expected tempo",
+        direction_label=(
+            "Lower expected tempo ←    0    → Higher expected tempo"
+        ),
         lower_group_label="Lowest expected-tempo effects",
         upper_group_label="Highest expected-tempo effects",
         output_path=output_path,
@@ -486,11 +513,12 @@ def plot_top_bottom_alpha_player_effects(
 
 
 def save_quarto_figure(
-    fig,
+    fig: Figure,
     filename: str,
     output_dir: str = FIGURES_PATH,
     dpi: int = 300,
-):
+) -> None:
+    """Save a figure in PDF and PNG formats for Quarto."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -508,7 +536,8 @@ def save_quarto_figure(
     )
 
 
-def possession_example():
+def possession_example() -> None:
+    """Save figures illustrating an example possession."""
     start_frame, start_ax = plot_dev_start_frame(
         data_path=POSS_EXAMPLE,
         game_id=10517,
@@ -519,7 +548,7 @@ def possession_example():
         home_color="skyblue",
         away_color="darkblue",
         ball_color="white",
-        title = "Argentina vs France | Player Possession Start",
+        title="Argentina vs France | Player Possession Start",
         # figsize = FIGSIZE_SQUARE
     )
 
@@ -536,7 +565,7 @@ def possession_example():
         ball_start_color="white",
         ball_end_color="gray",
         start_player_size=55,
-        title = "Argentina vs France | Player Attempts Pass"
+        title="Argentina vs France | Player Attempts Pass",
         # figsize = FIGSIZE_SQUARE
     )
 
@@ -551,19 +580,21 @@ def possession_example():
         ball_start_color="white",
         ball_end_color="gray",
         ball_trajectory_color="darkorange",
-        title = "Argentina vs France | Pass Successful to Teammate"
+        title="Argentina vs France | Pass Successful to Teammate",
         # figsize = FIGSIZE_FULL
     )
 
     save_quarto_figure(start_frame, filename="player_possession_start")
     save_quarto_figure(pass_fig, filename="player_possession_pass_attempt")
-    save_quarto_figure(possession_fig, filename="player_possession_pass_success")
+    save_quarto_figure(
+        possession_fig, filename="player_possession_pass_success"
+    )
 
 
-
-
-def main():
+def main() -> None:
+    """Reproduce all posterior-distribution figures."""
     possession_example()
+
 
 if __name__ == "__main__":
     main()

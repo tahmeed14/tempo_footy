@@ -46,7 +46,8 @@ def plot_player_archetypes(
     )
     if missing_columns:
         raise KeyError(
-            f"transformed_overlap is missing required columns: {missing_columns}."
+            "transformed_overlap is missing required columns: "
+            f"{missing_columns}."
         )
 
     points = (
@@ -168,7 +169,8 @@ def plot_player_archetypes_directional_support(
     )
     if missing_columns:
         raise KeyError(
-            f"transformed_overlap is missing required columns: {missing_columns}."
+            "transformed_overlap is missing required columns: "
+            f"{missing_columns}."
         )
 
     lower_threshold = 1 - probability_threshold
@@ -216,7 +218,7 @@ def generate_player_archetypes_figure(
     figsize: tuple[float, float] = DEFAULT_FIGSIZE,
     dpi: int = 300,
 ) -> tuple[Path, Path]:
-    """Load fitted results and save the archetype scatterplot as PDF and PNG."""
+    """Load results and save the archetype plot as PDF and PNG."""
     model_df = pl.read_parquet(
         model_data_path,
         columns=["player_id", "playername", "teamname"],

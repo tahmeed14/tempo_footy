@@ -21,3 +21,7 @@ todo/
 
 # results large files
 paper/results/*.nc
+
+tests/
+src/tempoctrl/reproduce_model.ipynb
+src/tempoctrl/reproduce_visuals.ipynb

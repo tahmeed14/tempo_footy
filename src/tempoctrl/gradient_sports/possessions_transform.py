@@ -1,15 +1,16 @@
+"""Transform Gradient Sports possession data."""
+
 from collections.abc import Sequence
 from pathlib import Path
 
 import polars as pl
 
-from tempoctrl.gradient_sports.ingest import scan_processed_files
 from tempoctrl.gradient_sports.ball_metrics import add_ball_metrics
 from tempoctrl.gradient_sports.frame_rates import FrameRateSpec
+from tempoctrl.gradient_sports.ingest import scan_processed_files
 from tempoctrl.gradient_sports.interpolations import (
     interpolate_ball_coordinates,
 )
-
 
 POSSESSION_COLUMNS = (
     "match_team_possession_id",
@@ -30,15 +31,15 @@ REQUIRED_COLUMNS = (
     "successful_pass_or_cross",
 )
 
-#FIXME: should we add period?
+# FIXME: should we add period?
 SORT_COLUMNS = (
     "game_id",
     "framenum",
 )
 
 ATTACKING_DIRECTION_COLUMNS = (
-    'match_team_possession_id',
-    'attacking_team_direction',
+    "match_team_possession_id",
+    "attacking_team_direction",
 )
 
 _CURRENT_POSSESSION_COLUMN = "__current_player_possession_id"
@@ -48,9 +49,7 @@ SYNTHETIC_PASS_END_COLUMN = "is_synthetic_pass_end"
 PITCH_LENGTH_METERS = 105.0
 PITCH_HALF_LENGTH_METERS = PITCH_LENGTH_METERS / 2
 PITCH_THIRD_BOUNDARY_METERS = PITCH_LENGTH_METERS / 6
-PITCH_THIRD_DTYPE = pl.Enum(
-    ["Defensive", "Middle", "Attacking"]
-)
+PITCH_THIRD_DTYPE = pl.Enum(["Defensive", "Middle", "Attacking"])
 
 
 def validate_possession_columns(df_in: pl.LazyFrame) -> pl.LazyFrame:
@@ -95,12 +94,9 @@ def fill_bounded_possessions_id(
     accepted so callers can sort the input only once. Duplicate rows for
     a frame share their single non-null possession annotation.
     """
-    possession_columns = (
-        (poss_col,) if isinstance(poss_col, str) else poss_col
-    )
+    possession_columns = (poss_col,) if isinstance(poss_col, str) else poss_col
     frame_columns = {
-        column: f"__frame_{column}"
-        for column in possession_columns
+        column: f"__frame_{column}" for column in possession_columns
     }
     return (
         df.sort(SORT_COLUMNS)
@@ -116,9 +112,7 @@ def fill_bounded_possessions_id(
         )
         .with_columns(
             *(
-                _bounded_possession_id(frame_column).alias(
-                    f"dev_{column}"
-                )
+                _bounded_possession_id(frame_column).alias(f"dev_{column}")
                 for column, frame_column in frame_columns.items()
             )
         )
@@ -153,9 +147,8 @@ def propagate_successful_delivery_possession(
     possession_column = "match_team_player_possession_id"
     development_column = f"dev_{possession_column}"
     possession_id = pl.col(possession_column)
-    delivery_is_active = (
-        pl.col(_CURRENT_POSSESSION_COLUMN)
-        == pl.col(_SUCCESSFUL_DELIVERY_COLUMN)
+    delivery_is_active = pl.col(_CURRENT_POSSESSION_COLUMN) == pl.col(
+        _SUCCESSFUL_DELIVERY_COLUMN
     )
     propagated_id = pl.when(delivery_is_active).then(
         pl.col(_SUCCESSFUL_DELIVERY_COLUMN)
@@ -229,14 +222,9 @@ def create_synthetic_final_pass_frame(
             .drop_nulls()
             .first()
             .alias(frame_player),
-            pl.col(development_team)
-            .drop_nulls()
-            .first()
-            .alias(frame_team),
+            pl.col(development_team).drop_nulls().first().alias(frame_team),
             pl.col("match_team_player_possession_id")
-            .filter(
-                pl.col("successful_pass_or_cross").fill_null(False)
-            )
+            .filter(pl.col("successful_pass_or_cross").fill_null(False))
             .drop_nulls()
             .first()
             .alias(successful_player),
@@ -304,25 +292,31 @@ def create_synthetic_final_pass_frame(
         descending=[False, False, True],
     )
 
-def append_attacking_direction(df_in : pl.LazyFrame) -> pl.LazyFrame:
+
+def append_attacking_direction(df_in: pl.LazyFrame) -> pl.LazyFrame:
+    """Append each possession's attacking direction."""
     path_events = Path("data/processed/gradient_sports/events/")
-    df_events = scan_processed_files(path_events,
-                                     columns=ATTACKING_DIRECTION_COLUMNS)
+    df_events = scan_processed_files(
+        path_events, columns=ATTACKING_DIRECTION_COLUMNS
+    )
 
     return df_in.join(
         df_events.drop_nulls().unique(),
-        left_on = "dev_match_team_possession_id",
-        right_on = "match_team_possession_id",
-        how = "left",
+        left_on="dev_match_team_possession_id",
+        right_on="match_team_possession_id",
+        how="left",
         maintain_order="left",
         suffix="_event",
         coalesce=True,
-        validate="m:1"
+        validate="m:1",
     )
 
+
 def _flip_if_attacking_left(struct_name: str, struct_column: str) -> pl.Expr:
-    """Flip (Reflect) the coordinates when team is attacking left such
-    that downstream processes consider all coordinates to be L to R"""
+    """Reflect coordinates when the team is attacking left.
+
+    This makes all downstream coordinates run from left to right.
+    """
     value = pl.col(struct_name).struct.field(struct_column)
 
     return (
@@ -332,7 +326,9 @@ def _flip_if_attacking_left(struct_name: str, struct_column: str) -> pl.Expr:
         .alias(struct_column)
     )
 
+
 def normalize_ball_coordinates(df_in: pl.LazyFrame) -> pl.LazyFrame:
+    """Normalize ball coordinates to a common attacking direction."""
     return df_in.with_columns(
         pl.struct(
             [
@@ -343,6 +339,7 @@ def normalize_ball_coordinates(df_in: pl.LazyFrame) -> pl.LazyFrame:
             ]
         ).alias("balls_smooth")
     )
+
 
 def label_pitch_thirds(df_in: pl.LazyFrame) -> pl.LazyFrame:
     """Label valid, normalized ball x coordinates by pitch third.
@@ -355,14 +352,13 @@ def label_pitch_thirds(df_in: pl.LazyFrame) -> pl.LazyFrame:
     """
     coord_x = pl.col("balls_smooth").struct.field("x")
 
-    valid_coordinate = (
-        coord_x.is_finite().fill_null(False)
-        & coord_x.is_between(
-            -PITCH_HALF_LENGTH_METERS,
-            PITCH_HALF_LENGTH_METERS,
-            closed="both",
-        ).fill_null(False)
-    )
+    valid_coordinate = coord_x.is_finite().fill_null(
+        False
+    ) & coord_x.is_between(
+        -PITCH_HALF_LENGTH_METERS,
+        PITCH_HALF_LENGTH_METERS,
+        closed="both",
+    ).fill_null(False)
 
     pitch_third = (
         pl.when(~valid_coordinate)
@@ -376,6 +372,7 @@ def label_pitch_thirds(df_in: pl.LazyFrame) -> pl.LazyFrame:
     )
 
     return df_in.with_columns(pitch_third)
+
 
 def transform_possessions(
     df_in: pl.LazyFrame,

@@ -1,5 +1,6 @@
-import polars as pl
+"""Transform Gradient Sports event data."""
 
+import polars as pl
 
 EVENT_MAIN_COLUMNS = (
     "event_number",
@@ -7,12 +8,13 @@ EVENT_MAIN_COLUMNS = (
     "gameEventId",
     "possessionEventId",
     "duration",
-    )
+)
 
 INITIAL_TOUCH_COLUMNS = (
     "initialPressureType",
     "initialHeightType",
-    "initialBodyType")
+    "initialBodyType",
+)
 
 GAME_EVENTS_COLUMNS = (
     "gameEventType",
@@ -26,7 +28,7 @@ GAME_EVENTS_COLUMNS = (
     "endType",
     "period",
     "touches",
-    )
+)
 
 POSSESSION_EVENTS_COLUMNS = (
     "possessionEventType",
@@ -35,103 +37,108 @@ POSSESSION_EVENTS_COLUMNS = (
     "pressureType",
     "crossOutcomeType",
     "passOutcomeType",
-    )
-
-# For ge_setpiecetype
-DEAD_BALL_SET_PIECE_TYPES = ("C", # corner 
-                             "D", # drop ball
-                             "F", # free kick
-                             "G", # goal kick
-                             "K", # kickoff
-                             "P", # open play
-                             "T") # throw in
-
-# For ge_gameeventtype
-PAUSE_EVENTS = ("SUB",
-                "ON",
-                "OFF",
-                "OUT",
-                "END"
 )
 
+# For ge_setpiecetype
+DEAD_BALL_SET_PIECE_TYPES = (
+    "C",  # corner
+    "D",  # drop ball
+    "F",  # free kick
+    "G",  # goal kick
+    "K",  # kickoff
+    "P",  # open play
+    "T",
+)  # throw in
+
+# For ge_gameeventtype
+PAUSE_EVENTS = ("SUB", "ON", "OFF", "OUT", "END")
+
 TRANSITION_EVENTS = (
-                    #WARNING: changing this will impact
-                    # create_team_possession_flag() 
-                    "FIRSTKICKOFF", 
-                     "SECONDKICKOFF", 
-                     "THIRDKICKOFF", 
-                     "FOURTHKICKOFF",
-                     "G", "OTB") # goals and out-of-bounds events
+    # WARNING: changing this will impact
+    # create_team_possession_flag()
+    "FIRSTKICKOFF",
+    "SECONDKICKOFF",
+    "THIRDKICKOFF",
+    "FOURTHKICKOFF",
+    "G",
+    "OTB",
+)  # goals and out-of-bounds events
 
 BODYPART_MAPPER = {
     # Hands/Arms
-    "2H": "Hands/Arms", "CA": "Hands/Arms", "PA": "Hands/Arms", 
-    "PU": "Hands/Arms", "LH": "Hands/Arms", "RH": "Hands/Arms", 
-    "LA": "Hands/Arms", "RA": "Hands/Arms", "TWOHANDS": "Hands/Arms",
-
+    "2H": "Hands/Arms",
+    "CA": "Hands/Arms",
+    "PA": "Hands/Arms",
+    "PU": "Hands/Arms",
+    "LH": "Hands/Arms",
+    "RH": "Hands/Arms",
+    "LA": "Hands/Arms",
+    "RA": "Hands/Arms",
+    "TWOHANDS": "Hands/Arms",
     # Header
     "HE": "Head",
-
     # Upper Body
-    "CH": "Torso/Other", "BA": "Torso/Other",
-    "BO": "Torso/Other", # BO refers to Bottom which is butt :O
-    "LC": "Torso/Other", "RC": "Torso/Other",
-    
+    "CH": "Torso/Other",
+    "BA": "Torso/Other",
+    "BO": "Torso/Other",  # BO refers to Bottom which is butt :O
+    "LC": "Torso/Other",
+    "RC": "Torso/Other",
     # Leg (not Foot)
-    "LK": "Leg (not Foot)", "RK": "Leg (not Foot)", "LS": "Leg (not Foot)", 
-    "RS": "Leg (not Foot)", "LT": "Leg (not Foot)", "RT": "Leg (not Foot)",
-    
+    "LK": "Leg (not Foot)",
+    "RK": "Leg (not Foot)",
+    "LS": "Leg (not Foot)",
+    "RS": "Leg (not Foot)",
+    "LT": "Leg (not Foot)",
+    "RT": "Leg (not Foot)",
     # Foot
-    "LF": "Foot", "RF": "Foot", "LB": "Foot", "RB": "Foot",
-    "R" : "Foot", "L" : "Foot",
-    
+    "LF": "Foot",
+    "RF": "Foot",
+    "LB": "Foot",
+    "RB": "Foot",
+    "R": "Foot",
+    "L": "Foot",
     # Not available
-    "VM": "N/A"
+    "VM": "N/A",
 }
 
 PRESSURE_MAPPER = {
-    "L" : "No Pressure",
-    "P" : "Pressured (inc. Attempted Pressure)",
-    "A" : "Pressured (inc. Attempted Pressure)",
-    "N" : "No Pressure"
+    "L": "No Pressure",
+    "P": "Pressured (inc. Attempted Pressure)",
+    "A": "Pressured (inc. Attempted Pressure)",
+    "N": "No Pressure",
 }
 
 BALL_HEIGHT_MAPPER = {
-    "A" : "Air",
-    "H" : "Air",
-    "L" : "Air",
-    "V" : "Air",
-    "G" : "Ground",
-    "M" : "N/A"
+    "A": "Air",
+    "H": "Air",
+    "L": "Air",
+    "V": "Air",
+    "G": "Ground",
+    "M": "N/A",
 }
 
 SETPIECE_MAPPER = {
-    "O" : "Open Play",
-    "D" : "Drop Kick",
-    "F" : "Free Kick",
-    "G" : "Goal Kick",
-    "K" : "Kickoff",
-    "P" : "Penalty",
-    "T" : "Throw In",
-    "C" : "Corner"
+    "O": "Open Play",
+    "D": "Drop Kick",
+    "F": "Free Kick",
+    "G": "Goal Kick",
+    "K": "Kickoff",
+    "P": "Penalty",
+    "T": "Throw In",
+    "C": "Corner",
 }
 
 LINESBROKEN_MAPPER = {
-    "A" : "Attack",
-    "AD" : "Attack & Defense (Midfield Bypassed)",
-    "AM" : "Attack & Midfield",
-    "AMD" : "Attack, Midfield, & Defense",
-    "D" : "Defense",
-    "M" : "Midfield",
-    "MD" : "Midfield & Defense"
+    "A": "Attack",
+    "AD": "Attack & Defense (Midfield Bypassed)",
+    "AM": "Attack & Midfield",
+    "AMD": "Attack, Midfield, & Defense",
+    "D": "Defense",
+    "M": "Midfield",
+    "MD": "Midfield & Defense",
 }
 
-PERIOD_MAPPER = {
-    1 : "1",
-    2 : "2",
-    3 : "AET",
-    4 : "AET"
-}
+PERIOD_MAPPER = {1: "1", 2: "2", 3: "AET", 4: "AET"}
 
 RENAME_MAPPER = {
     "gameid": "game_id",
@@ -139,10 +146,9 @@ RENAME_MAPPER = {
     "possessioneventid": "possession_event_id",
     "ge_gameeventtype": "game_event_type",
     "pe_possessioneventtype": "possession_event_type",
-    "ge_playerid" : "player_id",
-    "ge_teamid" : "team_id",
-    "teamattackingdirection" : "attacking_team_direction"
-
+    "ge_playerid": "player_id",
+    "ge_teamid": "team_id",
+    "teamattackingdirection": "attacking_team_direction",
 }
 
 FINALIZE_ORDER = (
@@ -169,6 +175,7 @@ FINALIZE_EXCLUDE = (
     # "period"
 )
 
+
 def select_events_columns(df_in: pl.DataFrame) -> pl.DataFrame:
     """Unnest selected event structs and return a flat DataFrame.
 
@@ -182,8 +189,8 @@ def select_events_columns(df_in: pl.DataFrame) -> pl.DataFrame:
 
     Returns:
         A flat Polars DataFrame containing the selected event fields.
-    """
 
+    """
     struct_selections = (
         ("initialTouch", "it_", INITIAL_TOUCH_COLUMNS),
         ("gameEvents", "ge_", GAME_EVENTS_COLUMNS),
@@ -193,22 +200,16 @@ def select_events_columns(df_in: pl.DataFrame) -> pl.DataFrame:
     # loop through the struct selections then through the fields for
     # each struct, creating a list of fields to select from df
     nested_fields = [
-        pl.col(struct_column)
-        .struct.field(field)
-        .alias(f"{prefix}{field}")
+        pl.col(struct_column).struct.field(field).alias(f"{prefix}{field}")
         for struct_column, prefix, fields in struct_selections
         for field in fields
     ]
 
     return df_in.select(
         *EVENT_MAIN_COLUMNS,
-        pl.col("stadiumMetadata").struct.field(
-            "teamAttackingDirection"
-        ),
+        pl.col("stadiumMetadata").struct.field("teamAttackingDirection"),
         *nested_fields,
-        ).rename(
-            str.lower
-            )
+    ).rename(str.lower)
 
 
 def drop_pen_shootouts(df_in: pl.DataFrame) -> pl.DataFrame:
@@ -225,10 +226,10 @@ def drop_pen_shootouts(df_in: pl.DataFrame) -> pl.DataFrame:
 
     Returns:
         Event data through the end of normal play for each match.
+
     """
-    normal_time_ended = (
-        (pl.col("ge_gameeventtype") == "END")
-        & (pl.col("ge_endtype") == "G")
+    normal_time_ended = (pl.col("ge_gameeventtype") == "END") & (
+        pl.col("ge_endtype") == "G"
     )
     normal_time_end_event = (
         pl.when(normal_time_ended)
@@ -243,28 +244,29 @@ def drop_pen_shootouts(df_in: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def reclassify_ballheight(df_in : pl.DataFrame) -> pl.DataFrame:
-   return (df_in.with_columns(
+def reclassify_ballheight(df_in: pl.DataFrame) -> pl.DataFrame:
+    """Reclassify ball-height values."""
+    return df_in.with_columns(
         pl.col("it_initialheighttype")
         .replace_strict(BALL_HEIGHT_MAPPER, default="N/A")
         .alias("first_touch_ballheight")
-        ).drop("it_initialheighttype")
-   )
+    ).drop("it_initialheighttype")
 
 
-def reclassify_pressuretype(df_in : pl.DataFrame) -> pl.DataFrame:
+def reclassify_pressuretype(df_in: pl.DataFrame) -> pl.DataFrame:
+    """Reclassify pressure-type values."""
     return df_in.with_columns(
         pl.col("pe_pressuretype")
         .replace_strict(PRESSURE_MAPPER, default="No Pressure")
         .alias("defender_pressure_type"),
-
         pl.col("it_initialpressuretype")
         .replace_strict(PRESSURE_MAPPER, default="No Pressure")
-        .alias("first_touch_defender_pressure_type")
+        .alias("first_touch_defender_pressure_type"),
     ).drop(["it_initialpressuretype", "pe_pressuretype"])
 
 
-def reclassify_firsttouch(df_in : pl.DataFrame) -> pl.DataFrame:
+def reclassify_firsttouch(df_in: pl.DataFrame) -> pl.DataFrame:
+    """Reclassify first-touch values."""
     return df_in.with_columns(
         pl.col("it_initialbodytype")
         .replace_strict(BODYPART_MAPPER, default="N/A")
@@ -273,15 +275,18 @@ def reclassify_firsttouch(df_in : pl.DataFrame) -> pl.DataFrame:
     ).drop("it_initialbodytype")
 
 
-def reclassify_linesbrokentype(df_in : pl.DataFrame) -> pl.DataFrame:
+def reclassify_linesbrokentype(df_in: pl.DataFrame) -> pl.DataFrame:
+    """Reclassify lines-broken values."""
     return df_in.with_columns(
         pl.col("pe_linesbrokentype")
-        .replace_strict(LINESBROKEN_MAPPER, default = "None")
+        .replace_strict(LINESBROKEN_MAPPER, default="None")
         .fill_null("None")
         .alias("lines_broken_type")
     ).drop("pe_linesbrokentype")
 
+
 def reclassify_period(df_in: pl.LazyFrame | pl.DataFrame) -> pl.DataFrame:
+    """Reclassify match-period values."""
     return df_in.with_columns(
         pl.col("ge_period")
         .replace_strict(PERIOD_MAPPER, default="None")
@@ -289,13 +294,16 @@ def reclassify_period(df_in: pl.LazyFrame | pl.DataFrame) -> pl.DataFrame:
         .alias("game_period")
     )
 
-def rename_classes_setpieces(df_in : pl.DataFrame) -> pl.DataFrame:
+
+def rename_classes_setpieces(df_in: pl.DataFrame) -> pl.DataFrame:
+    """Rename set-piece classes."""
     return df_in.with_columns(
         pl.col("ge_setpiecetype")
         .replace_strict(SETPIECE_MAPPER, default="N/A")
         .fill_null("Not available")
         # .alias("set_piece_type")
-    )#.drop("ge_setpiecetype")
+    )  # .drop("ge_setpiecetype")
+
 
 def drop_foul_events(df_in: pl.DataFrame) -> pl.DataFrame:
     """Drop supplemental ``FOUL`` game-event rows.
@@ -314,6 +322,7 @@ def drop_foul_events(df_in: pl.DataFrame) -> pl.DataFrame:
     """
     return df_in.filter(pl.col("ge_gameeventtype").ne_missing("FOUL"))
 
+
 # Identify possessions for teams & players
 def create_team_possession_flag(df_in: pl.DataFrame) -> pl.DataFrame:
     """Flag rows where a new team possession begins.
@@ -330,13 +339,12 @@ def create_team_possession_flag(df_in: pl.DataFrame) -> pl.DataFrame:
     Returns:
         Event data with a Boolean ``team_possession_start`` column.
         Never a null
+
     """
     pause_event = (
         pl.col("ge_gameeventtype").is_in(PAUSE_EVENTS).fill_null(False)
     )
-    team_has_possession = (
-        pl.col("ge_teamid").is_not_null() & ~pause_event
-    )
+    team_has_possession = pl.col("ge_teamid").is_not_null() & ~pause_event
     previous_possession_team = (
         pl.when(team_has_possession)
         .then(pl.col("ge_teamid"))
@@ -345,9 +353,8 @@ def create_team_possession_flag(df_in: pl.DataFrame) -> pl.DataFrame:
         .shift()
         .over("gameid")
     )
-    team_changed = (
-        team_has_possession
-        & pl.col("ge_teamid").ne_missing(previous_possession_team)
+    team_changed = team_has_possession & pl.col("ge_teamid").ne_missing(
+        previous_possession_team
     )
     dead_ball_started = pl.col("ge_setpiecetype").is_in(
         DEAD_BALL_SET_PIECE_TYPES
@@ -363,10 +370,8 @@ def create_team_possession_flag(df_in: pl.DataFrame) -> pl.DataFrame:
         .over("gameid")
         .fill_null(False)
     )
-    first_event = (pl.col("ge_gameeventtype")
-                   .is_in(TRANSITION_EVENTS[0:4])
-    )
-    
+    first_event = pl.col("ge_gameeventtype").is_in(TRANSITION_EVENTS[0:4])
+
     possession_started = (
         ~pause_event
         & (
@@ -387,7 +392,7 @@ def create_team_possession_id(df_in: pl.DataFrame) -> pl.DataFrame:
 
     Convert possession-start flags on possession-bearing rows into a
     cumulative possession number, then combine the game, team, and
-    possession values into a unique identifier. Retained pause or 
+    possession values into a unique identifier. Retained pause or
     null-team rows do not consume a possession number and receive a null
     composite ID.
 
@@ -398,6 +403,7 @@ def create_team_possession_id(df_in: pl.DataFrame) -> pl.DataFrame:
     Returns:
         Event data with ``match_possession_id`` and
         ``match_team_possession_id`` columns.
+
     """
     team_has_possession = (
         pl.col("ge_teamid").is_not_null()
@@ -405,17 +411,15 @@ def create_team_possession_id(df_in: pl.DataFrame) -> pl.DataFrame:
         & ~pl.col("ge_gameeventtype").is_in(PAUSE_EVENTS).fill_null(False)
     )
     counted_possession_start = (
-        pl.col("team_possession_start").fill_null(False)
-        & team_has_possession
+        pl.col("team_possession_start").fill_null(False) & team_has_possession
     )
     possession_data = df_in.with_columns(
-        counted_possession_start
-        .cum_sum()
+        counted_possession_start.cum_sum()
         .over("gameid")
         .alias("match_possession_id")
     )
 
-    #FIXME: Exlcude the team_possession_start flag
+    # FIXME: Exlcude the team_possession_start flag
     # return possession_data.select(
     #     pl.exclude("team_possession_start"),
     #     pl.concat_str(
@@ -451,6 +455,7 @@ def create_player_possession_id(df_in: pl.DataFrame) -> pl.DataFrame:
     Returns:
         Event data with an ``individual_possession_id`` column, without
         temporary player-possession columns.
+
     """
     player_has_team_possession = (
         pl.col("ge_playerid").is_not_null()
@@ -464,10 +469,9 @@ def create_player_possession_id(df_in: pl.DataFrame) -> pl.DataFrame:
         .shift()
         .over("gameid")
     )
-    player_changed = (
-        player_has_team_possession
-        & pl.col("ge_playerid").ne_missing(previous_known_player)
-    )
+    player_changed = player_has_team_possession & pl.col(
+        "ge_playerid"
+    ).ne_missing(previous_known_player)
     previous_player_team_possession = (
         pl.when(player_has_team_possession)
         .then(pl.col("match_team_possession_id"))
@@ -476,9 +480,8 @@ def create_player_possession_id(df_in: pl.DataFrame) -> pl.DataFrame:
         .shift()
         .over("gameid")
     )
-    team_possession_changed = (
-        pl.col("match_team_possession_id")
-        .ne_missing(previous_player_team_possession)
+    team_possession_changed = pl.col("match_team_possession_id").ne_missing(
+        previous_player_team_possession
     )
 
     player_possession_index = (
@@ -521,23 +524,20 @@ def add_possession_identifiers(df_in: pl.DataFrame) -> pl.DataFrame:
     not consume sequence numbers.
 
     Args:
-        df_in: pl.DataFrame containing event rows with 
+        df_in: pl.DataFrame containing event rows with
         `ge_gameeventtype`.
 
     Returns:
         Event data with team and player possession identifiers added.
-    """
 
+    """
     return create_player_possession_id(
-        create_team_possession_id(
-            create_team_possession_flag(df_in=df_in)
-            )
-        )
+        create_team_possession_id(create_team_possession_flag(df_in=df_in))
+    )
 
 
 def transform_events(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Transform the raw event data into a flat DataFrame with game 
-    state.
+    """Transform raw event data into a flat DataFrame with game state.
 
     Args:
         df_in: Event data containing the required identifier and nested
@@ -546,8 +546,8 @@ def transform_events(df_in: pl.DataFrame) -> pl.DataFrame:
     Returns:
         A flat Polars DataFrame containing the selected event fields and
         game state variables.
-    """
 
+    """
     return (
         df_in.pipe(select_events_columns)
         .pipe(drop_pen_shootouts)
@@ -589,11 +589,11 @@ def organize_event_columns(df_in: pl.DataFrame) -> pl.DataFrame:
         )
     )
 
+
 def cleanup_events(df_in: pl.DataFrame) -> pl.DataFrame:
     """Rename, remove prefixes, and organize processed event data."""
     return (
-        df_in
-        .pipe(rename_columns)
+        df_in.pipe(rename_columns)
         .pipe(remove_event_prefixes)
         .pipe(organize_event_columns)
     )

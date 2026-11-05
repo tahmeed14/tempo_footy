@@ -1,1 +1,1 @@
-# src/tempoctrl/__init__.py
+"""Analyze soccer possession tempo."""

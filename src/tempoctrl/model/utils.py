@@ -59,6 +59,7 @@ def summarize_player_effects(
         mean. The table contains the player identifier, posterior mean,
         posterior standard deviation, HDI bounds, and the posterior
         probability that the effect is greater than zero.
+
     """
     if not 0 < hdi_prob < 1:
         raise ValueError("hdi_prob must be between 0 and 1.")
@@ -79,7 +80,9 @@ def summarize_player_effects(
             f"{missing_sample_dims}."
         )
 
-    player_dims = [dim for dim in player_effect.dims if dim not in _SAMPLE_DIMS]
+    player_dims = [
+        dim for dim in player_effect.dims if dim not in _SAMPLE_DIMS
+    ]
     if len(player_dims) != 1:
         raise ValueError(
             f"Posterior variable {variable!r} must have exactly one player "
@@ -107,7 +110,9 @@ def summarize_player_effects(
         None,
     )
     if bound_dim is None or interval.sizes[bound_dim] != 2:
-        raise ValueError("ArviZ returned an HDI without two recognizable bounds.")
+        raise ValueError(
+            "ArviZ returned an HDI without two recognizable bounds."
+        )
 
     ranking = (
         xr.Dataset(
@@ -170,6 +175,7 @@ def build_player_effects_table(
     polars.DataFrame
         Player posterior statistics, metadata, and model-row counts, ordered
         from the lowest to highest posterior mean.
+
     """
     if isinstance(model_df, pl.LazyFrame):
         model_df = model_df.collect()
@@ -185,7 +191,9 @@ def build_player_effects_table(
         column for column in metadata_columns if column not in model_df.columns
     ]
     if missing_columns:
-        raise KeyError(f"model_df is missing required columns: {missing_columns}.")
+        raise KeyError(
+            f"model_df is missing required columns: {missing_columns}."
+        )
 
     ranking = pl.from_pandas(
         summarize_player_effects(
@@ -286,10 +294,12 @@ def discover_archetypes(
     shape_for_join = shape_matches.select(
         player_id_column,
         *shape_statistics,
-        *(["shape_credible"] if "shape_credible" in shape_matches.columns else []),
-    ).rename(
-        {column: f"shape_{column}" for column in shape_statistics}
-    )
+        *(
+            ["shape_credible"]
+            if "shape_credible" in shape_matches.columns
+            else []
+        ),
+    ).rename({column: f"shape_{column}" for column in shape_statistics})
     both_matches = mu_for_join.join(
         shape_for_join,
         on=player_id_column,
@@ -301,7 +311,9 @@ def discover_archetypes(
         if column in both_matches.columns
     ]
     remaining_columns = [
-        column for column in both_matches.columns if column not in identity_columns
+        column
+        for column in both_matches.columns
+        if column not in identity_columns
     ]
     both_matches = both_matches.select(*identity_columns, *remaining_columns)
 
@@ -348,7 +360,9 @@ def summarize_archetype_overlap(
         "shape_p_gt_zero",
     ]
     missing_columns = [
-        column for column in required_columns if column not in overlap_table.columns
+        column
+        for column in required_columns
+        if column not in overlap_table.columns
     ]
     if missing_columns:
         raise KeyError(
@@ -569,7 +583,9 @@ def filter_archetype_players(
     if alpha_credible:
         required_columns.append("shape_credible")
     missing_columns = [
-        column for column in required_columns if column not in overlap_table.columns
+        column
+        for column in required_columns
+        if column not in overlap_table.columns
     ]
     if missing_columns:
         raise KeyError(
@@ -622,12 +638,16 @@ def filter_archetype_players(
         condition &= pl.col("shape_credible") == "Credible"
 
     original_columns = [
-        column for column in overlap_table.columns if column != "player_archetype"
+        column
+        for column in overlap_table.columns
+        if column != "player_archetype"
     ]
     return (
         overlap_table.filter(condition)
         .with_columns(
-            pl.lit(_ARCHETYPE_CATEGORIES[category_index]).alias("player_archetype")
+            pl.lit(_ARCHETYPE_CATEGORIES[category_index]).alias(
+                "player_archetype"
+            )
         )
         .select("player_archetype", *original_columns)
     )
@@ -648,7 +668,9 @@ def _validate_archetype_table(
         column for column in required_columns if column not in table.columns
     ]
     if missing_columns:
-        raise KeyError(f"{table_name} is missing required columns: {missing_columns}.")
+        raise KeyError(
+            f"{table_name} is missing required columns: {missing_columns}."
+        )
 
 
 def _validate_archetype_range(
@@ -680,7 +702,9 @@ def _validate_archetype_range(
         )
 
     if lower > upper:
-        raise ValueError(f"{range_name} lower bound cannot exceed its upper bound.")
+        raise ValueError(
+            f"{range_name} lower bound cannot exceed its upper bound."
+        )
 
 
 def _filter_archetype_table(

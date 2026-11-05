@@ -1,3 +1,5 @@
+"""Ingest processed Gradient Sports data."""
+
 import bz2
 from collections.abc import Sequence
 from pathlib import Path
@@ -6,21 +8,23 @@ import polars as pl
 
 
 def read_events(local_path: str | Path) -> pl.DataFrame:
-    """read and unnest events JSON for a single match.
+    """Read and unnest events JSON for a single match.
 
     Reads the raw events JSON for `local_path`, assigns a 1-based
     `event_number` index, and returns the DataFrame with selected
     columns unnested via `selectRelevantEventsColumns`.
 
-    Parameters
-    - local_path: string path to the events JSON file.
+    Args:
+        local_path: Path to the events JSON file.
 
-    Returns
+    Returns:
+    -------
     - pl.DataFrame: unnested events ready for downstream processing.
+
     """
     # TODO: Issue #3
-    df = pl.read_json(local_path, infer_schema_length = None)
-    return df.with_row_index("event_number", offset = 1)
+    df = pl.read_json(local_path, infer_schema_length=None)
+    return df.with_row_index("event_number", offset=1)
 
 
 def resolve_tracking_paths(
@@ -31,9 +35,7 @@ def resolve_tracking_paths(
     resolved_raw_path = (
         Path(raw_path)
         if raw_path is not None
-        else Path(
-            f"data/raw/gradient_sports/tracking/{match_id}.jsonl.bz2"
-        )
+        else Path(f"data/raw/gradient_sports/tracking/{match_id}.jsonl.bz2")
     )
     staged_path = Path(
         f"data/staged/gradient_sports/tracking/{match_id}.parquet"
@@ -59,8 +61,7 @@ def tracking_stage_is_current(
 
     return (
         staged_path.is_file()
-        and staged_path.stat().st_mtime
-        >= resolved_raw_path.stat().st_mtime
+        and staged_path.stat().st_mtime >= resolved_raw_path.stat().st_mtime
         and not overwrite
     )
 
@@ -91,8 +92,7 @@ def stage_tracking(
             pl.scan_ndjson(
                 file,
                 infer_schema_length=10_000,
-            )
-            .sink_parquet(staged_path)
+            ).sink_parquet(staged_path)
         )
 
     return staged_path
@@ -106,6 +106,7 @@ def scan_tracking(df_path: str | Path) -> pl.LazyFrame:
 
     Returns:
         A lazy tracking-data query for downstream transformations.
+
     """
     return pl.scan_parquet(df_path)
 
@@ -119,12 +120,14 @@ def scan_processed_files(
     Args:
         df_path: One or more integrated match-level Parquet files, or a
             directory containing such files.
+        columns: Optional columns to read from each file.
 
     Returns:
         One lazy query spanning the selected match files.
 
     Raises:
         FileNotFoundError: If the path or Parquet files do not exist.
+
     """
     if isinstance(df_path, (str, Path)):
         input_path = Path(df_path)

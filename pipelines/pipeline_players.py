@@ -42,6 +42,7 @@ def run_pipeline(
 
     Returns:
         The path of the written or preserved lookup artifact.
+
     """
     logger.info("Building player lookup from: %s", roster_dir)
     df_lookup = build_player_game_lookup(roster_dir)

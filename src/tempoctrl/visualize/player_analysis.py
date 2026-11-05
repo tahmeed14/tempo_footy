@@ -34,6 +34,7 @@ def plot_archetypes(
     -------
     matplotlib.axes.Axes
         Axes containing the scatter plot.
+
     """
     _validate_effect_table(mu_table, "mu_table", player_id_column)
     _validate_effect_table(alpha_table, "alpha_table", player_id_column)
@@ -54,7 +55,9 @@ def plot_archetypes(
         .drop_nulls(["mu_estimate", "alpha_estimate"])
     )
     if points.is_empty():
-        raise ValueError("mu_table and alpha_table have no plottable players in common.")
+        raise ValueError(
+            "mu_table and alpha_table have no plottable players in common."
+        )
 
     with plt.style.context("default"):
         _, ax = plt.subplots(figsize=(10, 6), dpi=100)
@@ -85,7 +88,13 @@ def plot_archetypes(
             (0.02, 0.02, "Slower tempo, higher variance", "left", "bottom"),
             (0.98, 0.02, "Higher tempo, higher variance", "right", "bottom"),
         )
-        for x, y, label, horizontal_alignment, vertical_alignment in quadrant_labels:
+        for (
+            x,
+            y,
+            label,
+            horizontal_alignment,
+            vertical_alignment,
+        ) in quadrant_labels:
             ax.text(
                 x,
                 y,
@@ -112,4 +121,6 @@ def _validate_effect_table(
         column for column in required_columns if column not in table.columns
     ]
     if missing_columns:
-        raise KeyError(f"{table_name} is missing required columns: {missing_columns}.")
+        raise KeyError(
+            f"{table_name} is missing required columns: {missing_columns}."
+        )

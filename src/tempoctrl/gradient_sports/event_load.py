@@ -1,3 +1,5 @@
+"""Load Gradient Sports event data."""
+
 from pathlib import Path
 
 import polars as pl
@@ -7,8 +9,7 @@ MATCH_POSSESSION_LOOKUP_PATH = Path(
     "match_possession_lookup.parquet"
 )
 PLAYER_GAME_LOOKUP_PATH = Path(
-    "data/curated/gradient_sports/metadata_lookup/"
-    "player_game_lookup.parquet"
+    "data/curated/gradient_sports/metadata_lookup/player_game_lookup.parquet"
 )
 
 MATCH_POSSESSION_LOOKUP_COLUMNS = (
@@ -66,9 +67,7 @@ def add_player_metadata(
             "team_id",
             "player_id",
             "opponent_id",
-            pl.col("player_position_group").alias(
-                "player_possession_group"
-            ),
+            pl.col("player_position_group").alias("player_possession_group"),
             "started",
             "opposition_teamname",
         )
@@ -106,9 +105,8 @@ def write_match_possession_lookup(
             how="vertical_relaxed",
         )
 
-    df_lookup = (
-        df_lookup.pipe(add_player_metadata, player_lookup_path)
-        .sort(("game_id", "match_team_player_possession_id"))
+    df_lookup = df_lookup.pipe(add_player_metadata, player_lookup_path).sort(
+        ("game_id", "match_team_player_possession_id")
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df_lookup.write_parquet(output_path, compression="zstd")
@@ -120,13 +118,9 @@ def load_events(df_in: pl.DataFrame) -> tuple[Path, Path]:
 
     Returns:
         The event parquet path followed by the possession lookup path.
+
     """
-    match_ids = (
-        df_in.get_column("game_id")
-        .drop_nulls()
-        .unique()
-        .to_list()
-    )
+    match_ids = df_in.get_column("game_id").drop_nulls().unique().to_list()
     if len(match_ids) != 1:
         raise ValueError(
             "Event data must contain exactly one non-null game_id"

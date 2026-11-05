@@ -137,6 +137,7 @@ def write_possession_outputs(
 
     Returns:
         Frame-, team-, and player-level output paths, in that order.
+
     """
     output_directory = Path(output_dir)
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -157,9 +158,7 @@ def write_possession_outputs(
         frame_path = staged_paths[0]
 
         frame_df.sink_parquet(frame_path, compression="zstd")
-        tempo_input = pl.scan_parquet(frame_path).select(
-            _TEMPO_INPUT_COLUMNS
-        )
+        tempo_input = pl.scan_parquet(frame_path).select(_TEMPO_INPUT_COLUMNS)
         for level, output_path in zip(
             _POSSESSION_LEVELS,
             staged_paths[1:],

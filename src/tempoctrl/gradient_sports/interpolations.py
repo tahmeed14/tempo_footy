@@ -1,3 +1,5 @@
+"""Interpolate values in Gradient Sports tracking data."""
+
 import polars as pl
 
 BALL_COLUMN = "balls_smooth"
@@ -67,9 +69,7 @@ def _validate_interpolation_input(
     if not isinstance(ball_dtype, pl.Struct):
         raise TypeError(f"{BALL_COLUMN} must be a struct column.")
 
-    ball_fields = {
-        field.name: field.dtype for field in ball_dtype.fields
-    }
+    ball_fields = {field.name: field.dtype for field in ball_dtype.fields}
     missing_fields = [
         field for field in ("x", "y") if field not in ball_fields
     ]
@@ -78,15 +78,11 @@ def _validate_interpolation_input(
         raise ValueError(f"{BALL_COLUMN} is missing fields: {missing}.")
 
     nonnumeric_fields = [
-        field
-        for field in ("x", "y")
-        if not ball_fields[field].is_numeric()
+        field for field in ("x", "y") if not ball_fields[field].is_numeric()
     ]
     if nonnumeric_fields:
         invalid = ", ".join(nonnumeric_fields)
-        raise TypeError(
-            f"{BALL_COLUMN} fields must be numeric: {invalid}."
-        )
+        raise TypeError(f"{BALL_COLUMN} fields must be numeric: {invalid}.")
 
     imputation_dtype = ball_fields.get("is_imputed")
     if imputation_dtype is not None and imputation_dtype != pl.Boolean:
@@ -203,8 +199,7 @@ def _add_interpolation_eligibility(
     next_frame = pl.col(_NEXT_FRAME_COLUMN)
     frame_gap = next_frame - previous_frame - 1
     coordinates_missing = (
-        pl.col(_SOURCE_X_COLUMN).is_null()
-        & pl.col(_SOURCE_Y_COLUMN).is_null()
+        pl.col(_SOURCE_X_COLUMN).is_null() & pl.col(_SOURCE_Y_COLUMN).is_null()
     )
 
     return df.with_columns(
@@ -227,23 +222,15 @@ def _add_linear_interpolation_candidates(
     frame = pl.col(FRAME_COLUMN)
     previous_frame = pl.col(_PREVIOUS_FRAME_COLUMN)
     next_frame = pl.col(_NEXT_FRAME_COLUMN)
-    frame_fraction = (
-        (frame - previous_frame) / (next_frame - previous_frame)
-    )
+    frame_fraction = (frame - previous_frame) / (next_frame - previous_frame)
     x_candidate = (
         pl.col(_PREVIOUS_X_COLUMN)
-        + (
-            pl.col(_NEXT_X_COLUMN)
-            - pl.col(_PREVIOUS_X_COLUMN)
-        )
+        + (pl.col(_NEXT_X_COLUMN) - pl.col(_PREVIOUS_X_COLUMN))
         * frame_fraction
     )
     y_candidate = (
         pl.col(_PREVIOUS_Y_COLUMN)
-        + (
-            pl.col(_NEXT_Y_COLUMN)
-            - pl.col(_PREVIOUS_Y_COLUMN)
-        )
+        + (pl.col(_NEXT_Y_COLUMN) - pl.col(_PREVIOUS_Y_COLUMN))
         * frame_fraction
     )
 
@@ -290,9 +277,7 @@ def _apply_interpolation_candidates(df: pl.LazyFrame) -> pl.LazyFrame:
     if "is_imputed" not in {field.name for field in ball_dtype.fields}:
         field_expressions.append(can_impute.alias("is_imputed"))
 
-    return df.with_columns(
-        pl.struct(*field_expressions).alias(BALL_COLUMN)
-    )
+    return df.with_columns(pl.struct(*field_expressions).alias(BALL_COLUMN))
 
 
 def _drop_interpolation_columns(df: pl.LazyFrame) -> pl.LazyFrame:

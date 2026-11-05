@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parent
 
 DATA_DIRECTORIES = (
@@ -44,6 +43,7 @@ def initialize_repository(
 
     Returns:
         Absolute paths to all required repository directories.
+
     """
     root_path = Path(repository_root).resolve()
     created_paths = tuple(root_path / path for path in DATA_DIRECTORIES)

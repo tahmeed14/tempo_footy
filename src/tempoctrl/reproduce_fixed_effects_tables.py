@@ -63,7 +63,9 @@ ALPHA_FIXED_EFFECTS_COLUMNS = (
     "conditional_variance_pct_change_upper",
 )
 DEFAULT_MU_FIXED_EFFECTS_PATH = Path("paper/tables/model_mu_fixed_effects.csv")
-DEFAULT_ALPHA_FIXED_EFFECTS_PATH = Path("paper/tables/model_alpha_fixed_effects.csv")
+DEFAULT_ALPHA_FIXED_EFFECTS_PATH = Path(
+    "paper/tables/model_alpha_fixed_effects.csv"
+)
 DEFAULT_POSTERIOR_PATH = Path("paper/results/tempo_gamma_posterior.nc")
 _SAMPLE_DIMS = ("chain", "draw")
 
@@ -87,6 +89,7 @@ def generate_mu_fixed_effects_table(
     polars.DataFrame
         One row per population-level coefficient, with posterior summaries,
         diagnostics, sign probabilities, and log-link transformations.
+
     """
     posterior = getattr(idata, "posterior", None)
     if posterior is None:
@@ -94,7 +97,9 @@ def generate_mu_fixed_effects_table(
 
     fixed_effect_names = _mu_fixed_effect_names(posterior)
     if not fixed_effect_names:
-        raise ValueError("No mu fixed effects were found in the posterior group.")
+        raise ValueError(
+            "No mu fixed effects were found in the posterior group."
+        )
 
     result = _fixed_effects_summary_frame(
         idata,
@@ -127,7 +132,9 @@ def generate_mu_fixed_effects_table(
 
     table = pl.from_pandas(result.loc[:, MU_FIXED_EFFECTS_COLUMNS])
     if table.columns != list(MU_FIXED_EFFECTS_COLUMNS):
-        raise RuntimeError("The generated table does not match the required schema.")
+        raise RuntimeError(
+            "The generated table does not match the required schema."
+        )
 
     if output_path is not None:
         destination = _resolve_output_path(
@@ -147,7 +154,8 @@ def generate_alpha_fixed_effects_table(
     """Generate the Gamma shape-model fixed-effects results table.
 
     The CV and variance transformations describe conditional dispersion through
-    alpha, conceptually holding the modeled conditional mean component separate.
+    alpha, conceptually holding the modeled conditional mean component
+    separate.
     Pass ``None`` as ``output_path`` to return the table without writing it.
     """
     posterior = getattr(idata, "posterior", None)
@@ -156,7 +164,9 @@ def generate_alpha_fixed_effects_table(
 
     fixed_effect_names = _alpha_fixed_effect_names(posterior)
     if not fixed_effect_names:
-        raise ValueError("No alpha fixed effects were found in the posterior group.")
+        raise ValueError(
+            "No alpha fixed effects were found in the posterior group."
+        )
 
     result = _fixed_effects_summary_frame(
         idata,
@@ -188,8 +198,12 @@ def generate_alpha_fixed_effects_table(
     )
 
     result["conditional_variance_ratio"] = np.exp(-result["estimate"])
-    result["conditional_variance_ratio_hdi_lower"] = np.exp(-result["hdi_upper"])
-    result["conditional_variance_ratio_hdi_upper"] = np.exp(-result["hdi_lower"])
+    result["conditional_variance_ratio_hdi_lower"] = np.exp(
+        -result["hdi_upper"]
+    )
+    result["conditional_variance_ratio_hdi_upper"] = np.exp(
+        -result["hdi_lower"]
+    )
     result["conditional_variance_pct_change"] = 100 * (
         result["conditional_variance_ratio"] - 1
     )
@@ -218,7 +232,9 @@ def generate_alpha_fixed_effects_table(
 
     table = pl.from_pandas(result.loc[:, ALPHA_FIXED_EFFECTS_COLUMNS])
     if table.columns != list(ALPHA_FIXED_EFFECTS_COLUMNS):
-        raise RuntimeError("The generated table does not match the required schema.")
+        raise RuntimeError(
+            "The generated table does not match the required schema."
+        )
 
     if output_path is not None:
         destination = _resolve_output_path(
@@ -242,7 +258,9 @@ def _mu_fixed_effect_names(posterior: Any) -> list[str]:
         if not set(_SAMPLE_DIMS).issubset(values.dims):
             continue
 
-        coefficient_dims = [dim for dim in values.dims if dim not in _SAMPLE_DIMS]
+        coefficient_dims = [
+            dim for dim in values.dims if dim not in _SAMPLE_DIMS
+        ]
         if coefficient_dims and coefficient_dims != [f"{name}_dim"]:
             continue
         names.append(name)
@@ -261,7 +279,9 @@ def _alpha_fixed_effect_names(posterior: Any) -> list[str]:
         if not set(_SAMPLE_DIMS).issubset(values.dims):
             continue
 
-        coefficient_dims = [dim for dim in values.dims if dim not in _SAMPLE_DIMS]
+        coefficient_dims = [
+            dim for dim in values.dims if dim not in _SAMPLE_DIMS
+        ]
         if coefficient_dims and coefficient_dims != [f"{name}_dim"]:
             continue
         names.append(name)
@@ -280,7 +300,9 @@ def _fixed_effects_summary_frame(
     """Build the posterior-summary columns shared by fixed-effect tables."""
     summary = _summary_with_95_hdi(idata, fixed_effect_names)
     required_summary_columns = {"mean", "sd", "r_hat", "ess_bulk", "ess_tail"}
-    missing_summary_columns = required_summary_columns.difference(summary.columns)
+    missing_summary_columns = required_summary_columns.difference(
+        summary.columns
+    )
     if missing_summary_columns:
         raise ValueError(
             "az.summary() did not return required columns: "
@@ -313,7 +335,9 @@ def _fixed_effects_summary_frame(
     )
 
 
-def _summary_with_95_hdi(idata: Any, variable_names: list[str]) -> pd.DataFrame:
+def _summary_with_95_hdi(
+    idata: Any, variable_names: list[str]
+) -> pd.DataFrame:
     """Call az.summary with an explicit 95% HDI across ArviZ APIs."""
     parameters = inspect.signature(az.summary).parameters
     kwargs: dict[str, Any] = {
@@ -414,7 +438,9 @@ def _posterior_sign_probabilities(
     return probabilities
 
 
-def _resolve_output_path(output_path: str | Path, default_filename: str) -> Path:
+def _resolve_output_path(
+    output_path: str | Path, default_filename: str
+) -> Path:
     destination = Path(output_path)
     if not destination.suffix:
         destination = destination / default_filename

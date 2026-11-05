@@ -64,9 +64,7 @@ def _validate_tempo_inputs(
         FRAME_RATE_COLUMN,
     )
     nonnumeric_columns = [
-        column
-        for column in numeric_columns
-        if not schema[column].is_numeric()
+        column for column in numeric_columns if not schema[column].is_numeric()
     ]
     if nonnumeric_columns:
         invalid = ", ".join(nonnumeric_columns)
@@ -108,7 +106,7 @@ def _level_metadata_expressions(
 
 
 def _add_possession_sequence(df: pl.LazyFrame) -> pl.LazyFrame:
-    """Number player possessions chronologically within a team spell.
+    """Assign chronological numbers within a team possession.
 
     Sequence numbers are one-based. A team possession receives null
     sequence numbers if any player possessions share a start frame or
@@ -117,10 +115,9 @@ def _add_possession_sequence(df: pl.LazyFrame) -> pl.LazyFrame:
     """
     team_group = (_GAME_COLUMN, _TEAM_POSSESSION_COLUMN)
     start_group = (*team_group, "start_frame")
-    invalid_start = (
-        (pl.len().over(start_group) > 1)
-        | pl.col("start_frame").is_null()
-    )
+    invalid_start = (pl.len().over(start_group) > 1) | pl.col(
+        "start_frame"
+    ).is_null()
     invalid_team_sequence = invalid_start.any().over(team_group)
     sequence_number = (
         pl.col("start_frame")
@@ -138,22 +135,15 @@ def _add_possession_sequence(df: pl.LazyFrame) -> pl.LazyFrame:
 
 def _add_possession_time_elapsed(df: pl.LazyFrame) -> pl.LazyFrame:
     """Measure each player possession's start from the true team start."""
-    elapsed_frames = (
-        pl.col("start_frame") - pl.col(_TEAM_START_FRAME_COLUMN)
-    )
-    valid_elapsed_frames = (
-        elapsed_frames.is_not_null() & (elapsed_frames >= 0)
-    )
+    elapsed_frames = pl.col("start_frame") - pl.col(_TEAM_START_FRAME_COLUMN)
+    valid_elapsed_frames = elapsed_frames.is_not_null() & (elapsed_frames >= 0)
 
     return df.with_columns(
         pl.when(valid_elapsed_frames)
         .then(elapsed_frames)
         .alias("elapsed_frames_team_possession"),
         pl.when(valid_elapsed_frames)
-        .then(
-            elapsed_frames.cast(pl.Float64)
-            / pl.col(FRAME_RATE_COLUMN)
-        )
+        .then(elapsed_frames.cast(pl.Float64) / pl.col(FRAME_RATE_COLUMN))
         .alias("elapsed_seconds_team_possession"),
     )
 
@@ -179,6 +169,7 @@ def aggregate_possession_tempo(
     Args:
         df: Lazy frame-level rows with ball movement metrics.
         level: Team or player possession granularity.
+
     Returns:
         One row per possession with frame bounds, pitch-third movement,
         valid segment count, total displacement, elapsed frames, and ball
@@ -186,6 +177,7 @@ def aggregate_possession_tempo(
         segment. Team rows also count their distinct non-null player
         possessions. Player rows include their team ID, chronological
         sequence, and elapsed time from the true team-possession start.
+
     """
     possession_column = _validate_tempo_inputs(
         df,
@@ -213,21 +205,15 @@ def aggregate_possession_tempo(
     valid_key = pl.all_horizontal(
         *(pl.col(column).is_not_null() for column in group_columns)
     )
-    valid_segment = (
-        pl.col(_DISPLACEMENT_COLUMN).is_not_null()
-        & (pl.col(_DELTA_FRAME_COLUMN) > 0).fill_null(False)
-    )
+    valid_segment = pl.col(_DISPLACEMENT_COLUMN).is_not_null() & (
+        pl.col(_DELTA_FRAME_COLUMN) > 0
+    ).fill_null(False)
     has_valid_segment = pl.col("valid_segment_count") > 0
-    valid_frame_rate = (
-        pl.col(FRAME_RATE_COLUMN).is_finite().fill_null(False)
-        & (pl.col(FRAME_RATE_COLUMN) > 0).fill_null(False)
-    )
-    has_consistent_frame_rate = (
-        ~pl.col("__has_invalid_frame_rate")
-        & (
-            pl.col("__minimum_frame_rate")
-            == pl.col("__maximum_frame_rate")
-        )
+    valid_frame_rate = pl.col(FRAME_RATE_COLUMN).is_finite().fill_null(
+        False
+    ) & (pl.col(FRAME_RATE_COLUMN) > 0).fill_null(False)
+    has_consistent_frame_rate = ~pl.col("__has_invalid_frame_rate") & (
+        pl.col("__minimum_frame_rate") == pl.col("__maximum_frame_rate")
     )
     tempo_column = f"ball_speed_tempo_{level}"
     metadata_expressions = _level_metadata_expressions(level)
@@ -258,9 +244,7 @@ def aggregate_possession_tempo(
             pl.col(_FRAME_COLUMN).max().alias("end_frame"),
             *metadata_expressions,
             starting_pitch_third(),
-            valid_segment.sum()
-            .cast(pl.UInt32)
-            .alias("valid_segment_count"),
+            valid_segment.sum().cast(pl.UInt32).alias("valid_segment_count"),
             pl.when(valid_segment)
             .then(pl.col(_DISPLACEMENT_COLUMN))
             .sum()
@@ -271,9 +255,7 @@ def aggregate_possession_tempo(
             .sum()
             .cast(pl.Float64)
             .alias("__elapsed_frames"),
-            (~valid_frame_rate)
-            .any()
-            .alias("__has_invalid_frame_rate"),
+            (~valid_frame_rate).any().alias("__has_invalid_frame_rate"),
             pl.col(FRAME_RATE_COLUMN)
             .cast(pl.Float64)
             .min()
@@ -295,14 +277,14 @@ def aggregate_possession_tempo(
             .alias(FRAME_RATE_COLUMN),
         )
         .with_columns(
-            (
-                pl.col("elapsed_frames") /  pl.col(FRAME_RATE_COLUMN)
-            ).alias("elapsed_duration"),
+            (pl.col("elapsed_frames") / pl.col(FRAME_RATE_COLUMN)).alias(
+                "elapsed_duration"
+            ),
             (
                 pl.col("total_ball_displacement")
                 * pl.col(FRAME_RATE_COLUMN)
                 / pl.col("elapsed_frames")
-            ).alias(tempo_column)
+            ).alias(tempo_column),
         )
         .select(base_output_columns)
     )
