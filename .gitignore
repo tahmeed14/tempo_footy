@@ -25,3 +25,5 @@ paper/results/*.nc
 
 src/tempoctrl/reproduce_model.ipynb
 src/tempoctrl/reproduce_visuals.ipynb
+
+temp.py
