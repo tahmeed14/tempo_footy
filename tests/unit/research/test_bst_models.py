@@ -118,6 +118,29 @@ def test_drawwise_original_scale_moments_match_independent_scipy_distributions(f
     np.testing.assert_allclose(calculated["cv"], reference.std() / reference.mean(), rtol=1e-12)
 
 
+def test_gamma_mean_sd_interface_preserves_the_manuscript_mean_shape_likelihood():
+    """Changing the displayed Gamma convention must not change its density."""
+    import pymc as pm
+    import pytensor
+    from pytensor.compile.mode import Mode
+
+    mean = np.array([2.0, 7.0, 12.0, 4.0])
+    shape = np.array([.6, 3.0, 8.0, 1.0])
+    y = np.array([.1, 6.0, 20.0, 4.0])
+    sd = mean / np.sqrt(shape)
+    manuscript = pm.Gamma.dist(mu=mean, sigma=sd)
+    shape_rate = pm.Gamma.dist(alpha=shape, beta=shape / mean)
+    evaluate = pytensor.function(
+        [], [pm.logp(manuscript, y), pm.logp(shape_rate, y)],
+        mode=Mode(linker="py", optimizer="fast_compile"),
+    )
+    actual, previous = evaluate()
+    expected = stats.gamma.logpdf(y, a=shape, scale=mean / shape)
+    np.testing.assert_allclose(actual, previous, rtol=1e-12)
+    np.testing.assert_allclose(actual, expected, rtol=1e-12)
+    np.testing.assert_allclose(sd**2, mean**2 / shape)
+
+
 def test_predictive_checks_detect_shape_and_numeric_errors(processed_data):
     frame = prepare_data(processed_data).frame
     with pytest.raises(ValueError, match="shape"):

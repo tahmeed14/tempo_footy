@@ -120,5 +120,5 @@ def test_editing_prior_selection_preserves_comparability_but_changing_likelihood
     baseline = source.read_text()
     edited.write_text(baseline.replace('PRIOR_NAME = "baseline"', 'PRIOR_NAME = "stronger"'))
     assert interactive_model_source_hash(source) == interactive_model_source_hash(edited)
-    edited.write_text(baseline.replace("beta=alpha / mu", "beta=alpha * mu"))
+    edited.write_text(baseline.replace("sigma=mu / pt.sqrt(alpha)", "sigma=mu * pt.sqrt(alpha)"))
     assert interactive_model_source_hash(source) != interactive_model_source_hash(edited)

@@ -285,7 +285,9 @@ def build_model(data: PreparedData, priors: PriorSpec):
         mean, spread = pt.exp(eta), pt.exp(zeta)
         y = data.frame[OUTCOME_VARIABLE].to_numpy()
         if priors.family == "gamma":
-            pm.Gamma(OUTCOME_VARIABLE, alpha=spread, beta=spread / mean, observed=y, dims="observation")
+            # Manuscript mean-shape Gamma(mu, alpha): Var(Y) = mu**2 / alpha.
+            # PyMC's mean-SD interface implements it with SD = mu / sqrt(alpha).
+            pm.Gamma(OUTCOME_VARIABLE, mu=mean, sigma=mean / pt.sqrt(spread), observed=y, dims="observation")
         elif priors.family == "lognormal":
             pm.LogNormal(OUTCOME_VARIABLE, mu=eta - spread**2 / 2, sigma=spread, observed=y, dims="observation")
         else:

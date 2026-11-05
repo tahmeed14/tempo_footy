@@ -339,16 +339,19 @@ with model:
 #
 # The likelihood states how BST varies around its conditional mean at a given
 # dispersion. Its `observed=y` argument links the generative model to our data.
-# The family-specific mean correction is visible here; the rest of the model
-# matches the other two walkthroughs.
+# PyMC accepts a mean and a standard deviation rather than a mean and shape
+# together. We therefore supply $SD_i=\mu_i/\sqrt{\alpha_i}$. This implements
+# the manuscript's mean-shape likelihood exactly; $\alpha_i$ is still the
+# independently modeled shape. `sigma` below is this derived outcome SD,
+# not an additional model parameter or a player-effect standard deviation.
 
 # %%
 with model:
     alpha = pt.exp(zeta)
     likelihood = pm.Gamma(
         OUTCOME_VARIABLE,
-        alpha=alpha,
-        beta=alpha / mu,
+        mu=mu,
+        sigma=mu / pt.sqrt(alpha),
         observed=y,
         dims="observation",
     )
