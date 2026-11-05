@@ -7,18 +7,15 @@ import polars as pl
 def create_team_scores(df_in: pl.DataFrame) -> pl.DataFrame:
     """Compute cumulative home and away scores for each event.
 
-    Calculate the running score for both teams.
+    Calculate running scores independently within each game in
+    ``event_number`` order. Preserve the input rows and their order.
 
     Args:
-        df_in: Event data containing ``event_number``, ``ge_endtype``, and
+        df_in: Event data containing ``gameid``, ``event_number``, and
             ``ge_outtype``.
 
     Returns:
-        Events through the end of play with cumulative score columns for
-        the home and away teams.
-
-    Raises:
-        ValueError: If the data does not contain an end-of-play event.
+        All input events with cumulative home and away score columns.
 
     """
     score_expressions = [
@@ -26,6 +23,7 @@ def create_team_scores(df_in: pl.DataFrame) -> pl.DataFrame:
         .then(1)
         .otherwise(0)
         .cum_sum()
+        .over("gameid", order_by="event_number")
         .alias(score_column)
         for team_code, score_column in (
             ("H", "home_score"),
