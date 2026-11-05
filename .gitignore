@@ -22,6 +22,7 @@ todo/
 
 # results large files
 paper/results/*.nc
+paper/results/bst_distribution_comparison/
 
 src/tempoctrl/reproduce_model.ipynb
 src/tempoctrl/reproduce_visuals.ipynb
