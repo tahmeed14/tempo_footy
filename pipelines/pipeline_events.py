@@ -11,14 +11,15 @@ from tempoctrl.gradient_sports.event_transform import (
     transform_events,
 )
 from tempoctrl.gradient_sports.ingest import (
-    RAW_EVENTS_DIRECTORY,
     discover_event_files,
-    read_events,
+    scan_events,
+    stage_events,
 )
 from tempoctrl.pipeline_runtime import format_pipeline_runtime
 
 logger = logging.getLogger(__name__)
 PIPELINE_DIVIDER = "=" * 72
+OVERWRITE_STAGE = False
 
 
 def configure_logging() -> None:
@@ -32,14 +33,27 @@ def configure_logging() -> None:
 def run_pipeline(
     match_id: int,
     event_path: str | Path | None = None,
+    *,
+    overwrite_stage: bool = OVERWRITE_STAGE,
 ) -> tuple[Path, Path]:
-    """Build processed event data for one match."""
-    input_path = (
-        Path(event_path)
-        if event_path is not None
-        else RAW_EVENTS_DIRECTORY / f"{match_id}.json"
+    """Build processed event data for one match.
+
+    Args:
+        match_id: Match identifier used for the staged filename.
+        event_path: Optional source JSON path instead of the default.
+        overwrite_stage: Force replacement of a current staged file.
+
+    Returns:
+        The processed event path followed by the possession lookup path.
+
+    """
+    staged_path = stage_events(
+        match_id,
+        overwrite=overwrite_stage,
+        raw_path=event_path,
     )
-    df = read_events(input_path)
+    logger.info("Loading staged event file: %s", staged_path)
+    df = scan_events(staged_path).collect()
     df = transform_events(df)
     df = features_events(df)
     df = cleanup_events(df)

@@ -39,24 +39,90 @@ def discover_event_files(
     return tuple(sorted(discovered_files))
 
 
-def read_events(local_path: str | Path) -> pl.DataFrame:
-    """Read and unnest events JSON for a single match.
+def resolve_event_paths(
+    match_id: int | str,
+    raw_path: str | Path | None = None,
+) -> tuple[Path, Path]:
+    """Return the raw and staged paths for one event match."""
+    resolved_raw_path = (
+        Path(raw_path)
+        if raw_path is not None
+        else RAW_EVENTS_DIRECTORY / f"{match_id}.json"
+    )
+    staged_path = Path(
+        f"data/staged/gradient_sports/events/{match_id}.parquet"
+    )
+    return resolved_raw_path, staged_path
 
-    Reads the raw events JSON for `local_path`, assigns a 1-based
-    `event_number` index, and returns the DataFrame with selected
-    columns unnested via `selectRelevantEventsColumns`.
+
+def event_stage_is_current(
+    match_id: int | str,
+    overwrite: bool = False,
+    *,
+    raw_path: str | Path | None = None,
+) -> bool:
+    """Return whether an existing staged event file can be reused."""
+    resolved_raw_path, staged_path = resolve_event_paths(match_id, raw_path)
+    if not resolved_raw_path.is_file():
+        raise FileNotFoundError(
+            f"Raw event file not found: {resolved_raw_path}"
+        )
+
+    return (
+        staged_path.is_file()
+        and staged_path.stat().st_mtime >= resolved_raw_path.stat().st_mtime
+        and not overwrite
+    )
+
+
+def stage_events(
+    match_id: int | str,
+    overwrite: bool = False,
+    *,
+    raw_path: str | Path | None = None,
+) -> Path:
+    """Stage raw event JSON as Parquet without adding derived columns.
+
+    With overwrite=False, create a missing stage, replace a stage older
+    than the raw JSON, and reuse a current stage. With overwrite=True,
+    always restage and replace any existing staged file.
+
+    Read the full JSON schema and preserve nested values and row order.
 
     Args:
-        local_path: Path to the events JSON file.
+        match_id: Match identifier used for the staged filename.
+        overwrite: Force restaging even when the staged file is current.
+        raw_path: Optional source path instead of the default raw path.
 
     Returns:
-    -------
-    - pl.DataFrame: unnested events ready for downstream processing.
+        The path of the reused or newly written staged Parquet file.
 
     """
-    # TODO: Issue #3
-    df = pl.read_json(local_path, infer_schema_length=None)
-    return df.with_row_index("event_number", offset=1)
+    resolved_raw_path, staged_path = resolve_event_paths(match_id, raw_path)
+    if event_stage_is_current(
+        match_id,
+        overwrite,
+        raw_path=resolved_raw_path,
+    ):
+        return staged_path
+
+    df = pl.read_json(resolved_raw_path, infer_schema_length=None)
+    staged_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(staged_path, compression="zstd")
+    return staged_path
+
+
+def scan_events(df_path: str | Path) -> pl.LazyFrame:
+    """Scan staged events and add their one-based source row numbers.
+
+    Args:
+        df_path: Staged Parquet path returned by ``stage_events``.
+
+    Returns:
+        A lazy query with ``event_number`` assigned before filtering.
+
+    """
+    return pl.scan_parquet(df_path).with_row_index("event_number", offset=1)
 
 
 def resolve_tracking_paths(
