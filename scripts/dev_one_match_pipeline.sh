@@ -79,12 +79,12 @@ run_step() {
 run_step "PLAYER LOOKUP PIPELINE" \
     uv run python pipelines/pipeline_players.py
 
-for match_id in "${match_ids[@]}"; do
-    run_step "EVENT PIPELINE — MATCH ${match_id}" \
-        uv run python -c \
-        'import sys; from pipelines.pipeline_events import configure_logging, run_pipeline; configure_logging(); run_pipeline(int(sys.argv[1]))' \
-        "${match_id}"
+run_step "EVENT PIPELINE — SELECTED MATCHES" \
+    uv run python -c \
+    'import sys; from pipelines.pipeline_events import configure_logging, run_pipeline; configure_logging(); run_pipeline([int(value) for value in sys.argv[1:]])' \
+    "${match_ids[@]}"
 
+for match_id in "${match_ids[@]}"; do
     run_step "TRACKING PIPELINE — MATCH ${match_id}" \
         uv run python -c \
         'import sys; from pipelines.pipeline_tracking import configure_logging, run_pipeline; configure_logging(); run_pipeline(int(sys.argv[1]))' \

@@ -124,6 +124,35 @@ to the standard directories under `data/curated`, `data/staged`,
 
 The run time is dependent on the number of matches being processed.
 
+The event pipeline stages each selected raw JSON file, then scans and
+processes the selected matches together. It writes one processed event file
+per match to `data/processed/gradient_sports/events/<match_id>.parquet` and
+updates the shared possession lookup once per batch at
+`data/curated/gradient_sports/possession_lookup/match_possession_lookup.parquet`.
+These destinations and event schemas remain compatible with downstream
+tracking integration and model-data preparation.
+
+To run only the event pipeline for all discovered raw event files:
+
+```bash
+uv run python pipelines/pipeline_events.py
+```
+
+For one match or an explicit subset, call it from Python:
+
+```python
+from pipelines.pipeline_events import run_pipeline
+
+run_pipeline(10517)
+run_pipeline([10516, 10517])
+run_pipeline([10516, 10517], overwrite_stage=True)
+```
+
+By default, missing or stale staged files are created or refreshed, and
+current staged files are reused. `overwrite_stage=True` forces restaging.
+Processed event files are regenerated for selected matches; unrelated event
+files and possession lookup rows are preserved.
+
 ### 2. Reproduce the model dataframe
 
 After the development pipeline finishes, create the final dataframe used to
@@ -177,6 +206,9 @@ This option is useful for **only** for development and testing when running the 
 64-match workflow would require too much storage or processing time. Selected-
 match outputs are written under `data/investigate/` and do not replace the
 full-sample model inputs required to reproduce the paper results. 
+
+For multiple selected matches, the script runs the event pipeline as one
+batch before running tracking and integration for each match.
 
 ## Development and testing environments
 
