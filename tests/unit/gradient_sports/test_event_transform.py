@@ -2,15 +2,95 @@
 
 import polars as pl
 import pytest
-from polars.testing import assert_series_equal
+from polars.testing import assert_frame_equal, assert_series_equal
 
 from tempoctrl.gradient_sports import event_transform as event_transform_module
 from tempoctrl.gradient_sports.event_transform import (
     add_possession_identifiers,
     create_team_possession_flag,
     drop_foul_events,
+    reclassify_ballheight,
     transform_events,
 )
+
+
+@pytest.mark.parametrize("source_dtype", [pl.Null, pl.String])
+@pytest.mark.parametrize("row_count", [0, 2])
+def test_reclassify_ballheight_accepts_null_columns(
+    source_dtype: pl.DataType,
+    row_count: int,
+) -> None:
+    """Map null ball heights to N/A without changing event rows.
+
+    Behavior:
+        Accept both inferred Null and explicitly String-typed columns.
+
+    Input:
+        Zero or two null ball heights alongside UInt32 event numbers
+        and String markers in their original, unsorted order.
+
+    Expected:
+        Zero or two output rows with String first_touch_ballheight
+        values of N/A, no source height column, and unchanged metadata.
+
+    Guards against:
+        Replacement errors for Null dtype, empty-input failures, row
+        loss or reordering, and incorrect output types.
+    """
+    events = pl.DataFrame(
+        {
+            "event_number": pl.Series([2, 1][:row_count], dtype=pl.UInt32),
+            "it_initialheighttype": pl.Series(
+                [None] * row_count, dtype=source_dtype
+            ),
+            "marker": pl.Series(["B", "A"][:row_count], dtype=pl.String),
+        }
+    )
+    expected = pl.DataFrame(
+        {
+            "event_number": pl.Series([2, 1][:row_count], dtype=pl.UInt32),
+            "marker": pl.Series(["B", "A"][:row_count], dtype=pl.String),
+            "first_touch_ballheight": pl.Series(
+                ["N/A"] * row_count, dtype=pl.String
+            ),
+        }
+    )
+
+    assert_frame_equal(reclassify_ballheight(events), expected)
+
+
+def test_reclassify_ballheight_preserves_known_and_unknown_mappings() -> None:
+    """Keep the established mapping while supporting null heights.
+
+    Behavior:
+        Classify known height codes and default unknowns and nulls.
+
+    Input:
+        Eight String-typed rows: A, H, L, V, G, M, UNKNOWN, and null.
+
+    Expected:
+        Four Air values, Ground, and three N/A values, in source order.
+        The String output replaces the source column.
+
+    Guards against:
+        The Null-dtype fix changing existing mappings or leaking nulls.
+    """
+    events = pl.DataFrame(
+        {
+            "it_initialheighttype": [
+                "A", "H", "L", "V", "G", "M", "UNKNOWN", None
+            ]
+        }
+    )
+    expected = pl.DataFrame(
+        {
+            "first_touch_ballheight": [
+                "Air", "Air", "Air", "Air", "Ground", "N/A", "N/A", "N/A"
+            ]
+        }
+    )
+
+    assert_frame_equal(reclassify_ballheight(events), expected)
 
 
 def test_event_after_out_starts_new_team_possession() -> None:

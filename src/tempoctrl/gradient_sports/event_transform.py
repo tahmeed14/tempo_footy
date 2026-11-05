@@ -245,9 +245,13 @@ def drop_pen_shootouts(df_in: pl.DataFrame) -> pl.DataFrame:
 
 
 def reclassify_ballheight(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Reclassify ball-height values."""
+    """Reclassify ball heights, mapping nulls and unknowns to N/A.
+
+    Accept String and entirely Null-typed source columns.
+    """
     return df_in.with_columns(
         pl.col("it_initialheighttype")
+        .cast(pl.String)
         .replace_strict(BALL_HEIGHT_MAPPER, default="N/A")
         .alias("first_touch_ballheight")
     ).drop("it_initialheighttype")
