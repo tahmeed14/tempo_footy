@@ -46,10 +46,14 @@ from tempoctrl.research.bst_evaluation import compare_saved_runs
 # %% [markdown]
 # ## Model formulation
 #
-# For possession $i$, player $p[i]$ and opponent $o[i]$:
+# Following the manuscript's indexing, let $j[i]$ identify the player and
+# $k[i]$ the opposition team for possession $i$:
 #
-# $$\log\mu_i=\beta_0+X_i\beta+u_{p[i]}+v_{o[i]},\qquad
-# \zeta_i=\delta_0+Z_i\delta+w_{p[i]}.$$
+# $$\log(\mu_i)=\beta_0+\mathbf{x}_i^{\mathsf{T}}\boldsymbol{\beta}
+# +u_{j[i]}+v_{k[i]},$$
+# $$\zeta_i=\gamma_0+\mathbf{z}_i^{\mathsf{T}}\boldsymbol{\gamma}+a_{j[i]}.$$
+# The family-specific definition of $\zeta_i$ is given below; in the
+# manuscript's Gamma model it is $\log(\alpha_i)$.
 #
 # $X$ contains goal difference, ball height, pressure, defender challenges,
 # pitch third, position group, standardized log possession sequence and period.
@@ -73,7 +77,11 @@ from tempoctrl.research.bst_evaluation import compare_saved_runs
 # ## Proposed priors and sensitivity configurations
 #
 # $$\beta_0\sim N(\log 7,s_0),\quad \beta_j\sim N(0,s_\beta),\quad
-# u_p,v_o\sim N(0,\tau^2),\quad \tau\sim\operatorname{HalfNormal}(s_\beta).$$
+# u_j\sim N(0,\sigma_{\text{player}}),\quad
+# v_k\sim N(0,\sigma_{\text{opponent}}),\quad
+# \sigma_{\text{player}},\sigma_{\text{opponent}}
+# \sim\operatorname{HalfNormal}(s_\beta).$$
+# Each Normal's second argument denotes its standard deviation.
 #
 # Each group has its own scale parameter. Dispersion uses analogous Normal
 # priors for its intercept/context effects and HalfNormal group-scale priors.

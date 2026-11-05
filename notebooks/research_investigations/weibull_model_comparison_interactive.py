@@ -181,12 +181,19 @@ print(f"X: {X.shape}; Z: {Z.shape}; outcome: {y.shape}")
 # %% [markdown]
 # ## 3. Define what the model should estimate
 #
-# $Y_i$ is BST for possession $i$, $p[i]$ identifies its player, and $o[i]$
-# identifies its opponent. We model **conditional arithmetic mean** and
-# **conditional dispersion** separately:
+# $Y_i$ is BST for possession $i$. Following the manuscript, $j[i]$ identifies
+# its player and $k[i]$ the opposition team. We retain its expected-tempo
+# structure and use a family-specific natural log-dispersion predictor:
 #
-# $$\eta_i=\log\mu_i=\beta_0+X_i\beta+u_{p[i]}+v_{o[i]},$$
-# $$\zeta_i=\delta_0+Z_i\delta+w_{p[i]}.$$
+# $$\log(\mu_i)=\beta_0+\mathbf{x}_i^{\mathsf{T}}\boldsymbol{\beta}
+# +u_{j[i]}+v_{k[i]},$$
+# $$\zeta_i=\gamma_0+\mathbf{z}_i^{\mathsf{T}}\boldsymbol{\gamma}+a_{j[i]}.$$
+#
+# The code calls the mean predictor `eta`. The `X` and `Z` matrices contain
+# the rows $\mathbf{x}_i^{\mathsf{T}}$ and $\mathbf{z}_i^{\mathsf{T}}$.
+# `mean_player`, `mean_opponent` and `dispersion_player` represent $u_j$,
+# $v_k$ and $a_j$. The family-specific definition of $\zeta_i$ appears below;
+# the manuscript's Gamma shape submodel instead uses $\zeta_i=\log(\alpha_i)$.
 #
 # Mean and dispersion player effects are distinct, independent hierarchies.
 # Thus a player can have higher adjusted mean BST without necessarily having
@@ -208,8 +215,11 @@ print(f"X: {X.shape}; Z: {Z.shape}; outcome: {y.shape}")
 # ## 4. Specify and inspect the priors
 #
 # $$\beta_0\sim N(\log 7,s_0),\quad \beta_j\sim N(0,s_\beta),$$
-# $$u_p\sim N(0,\tau_p^2),\quad v_o\sim N(0,\tau_o^2),\quad
-# \tau_p,\tau_o\sim\operatorname{HalfNormal}(s_\beta).$$
+# $$u_j\sim N(0,\sigma_{\text{player}}),\quad
+# v_k\sim N(0,\sigma_{\text{opponent}}),\quad
+# \sigma_{\text{player}},\sigma_{\text{opponent}}
+# \sim\operatorname{HalfNormal}(s_\beta).$$
+# Each Normal's second argument denotes its standard deviation.
 #
 # Dispersion uses analogous priors on its natural log-parameter. Each group
 # scale is a separate random variable. The prior center 7 is the median of the
@@ -267,9 +277,11 @@ with model:
 # %% [markdown]
 # ### Add player and opponent effects to the mean
 #
-# Noncentered effects are written as $u_p=\tau_p z_p$, where $z_p\sim N(0,1)$.
-# The implied prior is still $u_p\sim N(0,\tau_p^2)$. This representation often
-# makes hierarchical sampling easier. Learning $\tau_p$ controls how much player
+# Noncentered effects are written as $u_j=\sigma_{\text{player}}r_j$,
+# where $r_j\sim N(0,1)$. The implied prior is
+# $u_j\sim N(0,\sigma_{\text{player}})$, using standard-deviation notation.
+# This representation often makes hierarchical sampling easier.
+# Learning $\sigma_{\text{player}}$ controls how much player
 # estimates are partially pooled toward the shared contextual regression.
 
 # %%

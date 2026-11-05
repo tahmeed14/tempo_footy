@@ -181,33 +181,51 @@ print(f"X: {X.shape}; Z: {Z.shape}; outcome: {y.shape}")
 # %% [markdown]
 # ## 3. Define what the model should estimate
 #
-# $Y_i$ is BST for possession $i$, $p[i]$ identifies its player, and $o[i]$
-# identifies its opponent. We model **conditional arithmetic mean** and
-# **conditional dispersion** separately:
+# Following the manuscript's Model section, $Y_i$ is possession BST,
+# $j[i]$ identifies its player, and $k[i]$ identifies the opposition team.
+# We use **mean-shape** notation:
 #
-# $$\eta_i=\log\mu_i=\beta_0+X_i\beta+u_{p[i]}+v_{o[i]},$$
-# $$\zeta_i=\delta_0+Z_i\delta+w_{p[i]}.$$
+# $$Y_i\sim\operatorname{Gamma}(\mu_i,\alpha_i),$$
+#
+# where $\mu_i$ is expected possession tempo and $\alpha_i$ is Gamma shape.
+# The expected-tempo and conditional-variability submodels are
+#
+# $$\log(\mu_i)=\beta_0+\mathbf{x}_i^{\mathsf{T}}\boldsymbol{\beta}
+# +u_{j[i]}+v_{k[i]},$$
+# $$\log(\alpha_i)=\gamma_0+\mathbf{z}_i^{\mathsf{T}}\boldsymbol{\gamma}
+# +a_{j[i]}.$$
+#
+# The code calls these two linear predictors `eta` and `zeta`. Its `X` and `Z`
+# matrices contain the rows $\mathbf{x}_i^{\mathsf{T}}$ and
+# $\mathbf{z}_i^{\mathsf{T}}$. `mean_player`, `mean_opponent` and
+# `dispersion_player` represent $u_j$, $v_k$ and $a_j$, respectively.
+#
+# $$u_j\sim\mathcal{N}(0,\sigma_{\text{player}}),\qquad
+# v_k\sim\mathcal{N}(0,\sigma_{\text{opponent}}),\qquad
+# a_j\sim\mathcal{N}(0,\sigma_{\alpha,\text{player}}).$$
+# Here each Normal's second argument is its standard deviation, as in PyMC.
 #
 # Mean and dispersion player effects are distinct, independent hierarchies.
 # Thus a player can have higher adjusted mean BST without necessarily having
 # higher relative variability. We retain the CMSAC predictor sets to isolate
 # distribution and prior sensitivity from predictor selection.
 #
-# $$Y_i\sim\operatorname{Gamma}(\alpha_i,\alpha_i/\mu_i),\qquad
-# \alpha_i=\exp(\zeta_i).$$
-#
-# The second Gamma parameter is a **rate**. This gives
-# $$E[Y_i]=\mu_i,\quad SD[Y_i]=\mu_i/\sqrt{\alpha_i},\quad
+# $$E[Y_i\mid\mu_i,\alpha_i]=\mu_i,\qquad
+# \operatorname{Var}(Y_i\mid\mu_i,\alpha_i)=\frac{\mu_i^2}{\alpha_i},$$
+# $$SD[Y_i\mid\mu_i,\alpha_i]=\mu_i/\sqrt{\alpha_i},\qquad
 # CV[Y_i]=1/\sqrt{\alpha_i}.$$
-# Increasing log-shape reduces relative variability. The mean stays fixed
-# when shape changes, because the rate changes with it.
+# The manuscript's $\mu_i^2/\alpha_i$ expression is the conditional variance.
+# Increasing shape reduces relative variability at a fixed expected tempo.
+# A log-shape effect $d$ gives $\%\Delta CV=100\{\exp(-d/2)-1\}$.
 
 # %% [markdown]
 # ## 4. Specify and inspect the priors
 #
 # $$\beta_0\sim N(\log 7,s_0),\quad \beta_j\sim N(0,s_\beta),$$
-# $$u_p\sim N(0,\tau_p^2),\quad v_o\sim N(0,\tau_o^2),\quad
-# \tau_p,\tau_o\sim\operatorname{HalfNormal}(s_\beta).$$
+# $$u_j\sim N(0,\sigma_{\text{player}}),\quad
+# v_k\sim N(0,\sigma_{\text{opponent}}),\quad
+# \sigma_{\text{player}},\sigma_{\text{opponent}}
+# \sim\operatorname{HalfNormal}(s_\beta).$$
 #
 # Dispersion uses analogous priors on its natural log-parameter. Each group
 # scale is a separate random variable. The prior center 7 is the median of the
@@ -265,9 +283,11 @@ with model:
 # %% [markdown]
 # ### Add player and opponent effects to the mean
 #
-# Noncentered effects are written as $u_p=\tau_p z_p$, where $z_p\sim N(0,1)$.
-# The implied prior is still $u_p\sim N(0,\tau_p^2)$. This representation often
-# makes hierarchical sampling easier. Learning $\tau_p$ controls how much player
+# Noncentered effects are written as $u_j=\sigma_{\text{player}}r_j$,
+# where $r_j\sim N(0,1)$. The implied prior is
+# $u_j\sim N(0,\sigma_{\text{player}})$, using standard-deviation notation.
+# This representation often makes hierarchical sampling easier.
+# Learning $\sigma_{\text{player}}$ controls how much player
 # estimates are partially pooled toward the shared contextual regression.
 
 # %%

@@ -83,17 +83,43 @@ def prior_table() -> pd.DataFrame:
 
 def methods_markdown(family: str) -> str:
     formulations = {
-        "gamma": r"$Y_i\sim\operatorname{Gamma}(\alpha_i,\alpha_i/\mu_i)$, $\log\alpha_i=\zeta_i$, $CV_i=\alpha_i^{-1/2}$.",
+        "gamma": (
+            r"Following the manuscript's mean-shape convention, $Y_i\sim\operatorname{Gamma}(\mu_i,\alpha_i)$, "
+            r"where $\mu_i$ is expected BST and $\alpha_i$ is shape. "
+            r"$E[Y_i\mid\mu_i,\alpha_i]=\mu_i$, "
+            r"$\operatorname{Var}(Y_i\mid\mu_i,\alpha_i)=\mu_i^2/\alpha_i$, "
+            r"$SD_i=\mu_i/\sqrt{\alpha_i}$, and $CV_i=\alpha_i^{-1/2}$. "
+            r"Here $\log\alpha_i=\zeta_i$. PyMC implements this using "
+            r"`pm.Gamma(mu=mu, sigma=mu / sqrt(alpha))`; sigma is the derived outcome SD. "
+            r"For any log-shape effect $d$, $\%\Delta CV=100\{\exp(-d/2)-1\}$."
+        ),
         "lognormal": r"$Y_i\sim\operatorname{LogNormal}(\log\mu_i-\sigma_i^2/2,\sigma_i)$, $\log\sigma_i=\zeta_i$, $CV_i=\sqrt{\exp(\sigma_i^2)-1}$.",
         "weibull": r"$Y_i\sim\operatorname{Weibull}(k_i,\lambda_i)$, $\log k_i=\zeta_i$, $\lambda_i=\mu_i/\Gamma(1+1/k_i)$, $CV_i=\sqrt{\Gamma(1+2/k_i)/\Gamma(1+1/k_i)^2-1}$.",
     }
+    predictor_formulation = (
+        r"The outcome $Y_i>0$ is possession BST in metres/second. "
+        r"Player $j[i]$ and opposition team $k[i]$ follow the manuscript's notation. "
+        r"All families model conditional arithmetic mean through "
+        r"$\log(\mu_i)=\beta_0+\mathbf{x}_i^{\mathsf{T}}\boldsymbol{\beta}+u_{j[i]}+v_{k[i]}$. "
+        r"The natural log-dispersion predictor is "
+        r"$\zeta_i=\gamma_0+\mathbf{z}_i^{\mathsf{T}}\boldsymbol{\gamma}+a_{j[i]}$."
+    )
+    if family == "gamma":
+        predictor_formulation += (
+            r" For Gamma this is exactly the manuscript's shape submodel: "
+            r"$\log(\alpha_i)=\gamma_0+\mathbf{z}_i^{\mathsf{T}}\boldsymbol{\gamma}+a_{j[i]}$. "
+            r"The varying intercepts are $u_j\sim\mathcal{N}(0,\sigma_{\text{player}})$, "
+            r"$v_k\sim\mathcal{N}(0,\sigma_{\text{opponent}})$ and "
+            r"$a_j\sim\mathcal{N}(0,\sigma_{\alpha,\text{player}})$, "
+            r"with each Normal's second argument denoting its standard deviation."
+        )
     return "\n\n".join([
         f"# {family.capitalize()} BST research model",
-        r"The outcome $Y_i>0$ is possession BST in metres/second. All families model the same conditional arithmetic mean: $\log\mu_i=\beta_0+X_i\beta+u_{p[i]}+v_{o[i]}$. Dispersion follows $\zeta_i=\delta_0+Z_i\delta+w_{p[i]}$.",
+        predictor_formulation,
         formulations[family],
         "X preserves CMSAC predictors: goal difference, first-touch height and pressure, defender challenges, pitch third, position, log-standardized possession sequence, and game period; player and opponent intercepts. Z uses pressure, challenges, pitch third, position, and a player intercept. Contrasts use the module's explicit repository reference levels.",
         "## Proposed priors",
-        r"$\beta_0\sim N(\log 7,s_0)$; contextual mean effects $\beta_j\sim N(0,s_\beta)$; player and opponent effects are independent $N(0,\tau^2)$ with $\tau\sim\operatorname{HalfNormal}(s_\beta)$. Dispersion has the same hierarchy on its natural log-parameter, with family-specific centers and widths in priors.csv. Effects use noncentered parameterizations.",
+        r"$\beta_0\sim N(\log 7,s_0)$; contextual mean effects $\beta_\ell\sim N(0,s_\beta)$. Mean player and opponent SDs each have independent $\operatorname{HalfNormal}(s_\beta)$ priors. Dispersion has the same hierarchy on its natural log-parameter, with family-specific centers and widths in priors.csv. All Normal parameters use standard-deviation notation. Effects use noncentered parameterizations.",
         "Baseline, stronger and weaker regularization keep centers fixed. The mean 7 and Gamma shape 3 originate in the existing CMSAC specification, rather than independent domain elicitation; they may reflect earlier analysis of these outcomes. The common CV center is 1/sqrt(3). Dispersion widths use the local derivative of log(CV) at that center: this matches local uncertainty, not full prior distributions. All contextual and group-scale widths change jointly; stronger/weaker mean-intercept SDs are .25/.60 versus .40 baseline. These are proposed configurations pending original-scale prior predictive review; implausible tails require revision before confirmatory inference.",
         markdown_table(prior_table().query("family == @family").drop(columns=["family", "calibration_status"])),
         "## Evaluation metric and validation",

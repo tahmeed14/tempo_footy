@@ -46,23 +46,37 @@ from tempoctrl.research.bst_evaluation import compare_saved_runs
 # %% [markdown]
 # ## Model formulation
 #
-# For possession $i$, player $p[i]$ and opponent $o[i]$:
+# Following the manuscript's Model section, use the **mean-shape** convention:
 #
-# $$\log\mu_i=\beta_0+X_i\beta+u_{p[i]}+v_{o[i]},\qquad
-# \zeta_i=\delta_0+Z_i\delta+w_{p[i]}.$$
+# $$Y_i\sim\operatorname{Gamma}(\mu_i,\alpha_i),$$
 #
-# $X$ contains goal difference, ball height, pressure, defender challenges,
+# where $\mu_i$ is expected possession BST and $\alpha_i$ is Gamma shape.
+# For player $j[i]$ and opposition team $k[i]$, the two log-link submodels are
+#
+# $$\log(\mu_i)=\beta_0+\mathbf{x}_i^{\mathsf{T}}\boldsymbol{\beta}
+# +u_{j[i]}+v_{k[i]},$$
+# $$\log(\alpha_i)=\gamma_0+\mathbf{z}_i^{\mathsf{T}}\boldsymbol{\gamma}
+# +a_{j[i]}.$$
+#
+# $\mathbf{x}_i$ contains goal difference, ball height, pressure, defender challenges,
 # pitch third, position group, standardized log possession sequence and period.
-# $Z$ contains pressure, defender challenges, pitch third and position group.
+# $\mathbf{z}_i$ contains pressure, defender challenges, pitch third and position group.
 # The player and opponent effects use independent noncentered hierarchies.
 # Shared predictors and arithmetic-mean semantics isolate distribution choice.
 #
-# $Y_i\mid\mu_i,\alpha_i\sim\operatorname{Gamma}(\alpha_i,\alpha_i/\mu_i)$,
-# where the second argument is **rate**, and $\log\alpha_i=\zeta_i$.
+# $$u_j\sim\mathcal{N}(0,\sigma_{\text{player}}),\qquad
+# v_k\sim\mathcal{N}(0,\sigma_{\text{opponent}}),\qquad
+# a_j\sim\mathcal{N}(0,\sigma_{\alpha,\text{player}}).$$
+# Here each Normal's second argument is its standard deviation, as in PyMC.
 #
-# $$E[Y_i]=\mu_i,\qquad SD[Y_i]=\mu_i/\sqrt{\alpha_i},\qquad
+# $$E[Y_i\mid\mu_i,\alpha_i]=\mu_i,\qquad
+# \operatorname{Var}(Y_i\mid\mu_i,\alpha_i)=\frac{\mu_i^2}{\alpha_i},$$
+# $$SD[Y_i\mid\mu_i,\alpha_i]=\mu_i/\sqrt{\alpha_i},\qquad
 # CV[Y_i]=\alpha_i^{-1/2}.$$
 #
+# PyMC expresses this mean-shape model through its mean-SD interface:
+# `pm.Gamma(mu=mu, sigma=mu / sqrt(alpha))`. Shape remains modeled separately.
+# For a log-shape effect $d$, $\%\Delta CV=100\{\exp(-d/2)-1\}$.
 # Higher log-shape means lower relative variability. The Gamma baseline
 # reproduces the CMSAC numerical prior widths, explicitly applying dispersion
 # contextual priors that the original script did not fully specify.
@@ -71,7 +85,10 @@ from tempoctrl.research.bst_evaluation import compare_saved_runs
 # ## Proposed priors and sensitivity configurations
 #
 # $$\beta_0\sim N(\log 7,s_0),\quad \beta_j\sim N(0,s_\beta),\quad
-# u_p,v_o\sim N(0,\tau^2),\quad \tau\sim\operatorname{HalfNormal}(s_\beta).$$
+# u_j\sim N(0,\sigma_{\text{player}}),\quad
+# v_k\sim N(0,\sigma_{\text{opponent}}),\quad
+# \sigma_{\text{player}},\sigma_{\text{opponent}}
+# \sim\operatorname{HalfNormal}(s_\beta).$$
 #
 # Each group has its own scale parameter. Dispersion uses analogous Normal
 # priors for its intercept/context effects and HalfNormal group-scale priors.
