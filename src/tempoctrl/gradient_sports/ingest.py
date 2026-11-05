@@ -6,6 +6,38 @@ from pathlib import Path
 
 import polars as pl
 
+RAW_EVENTS_DIRECTORY = Path("data/raw/gradient_sports/events")
+
+
+def discover_event_files(
+    input_dir: str | Path = RAW_EVENTS_DIRECTORY,
+) -> tuple[tuple[int, Path], ...]:
+    """Discover raw event files and their numeric match IDs."""
+    input_directory = Path(input_dir)
+    if not input_directory.is_dir():
+        raise FileNotFoundError(
+            f"Raw event directory does not exist: {input_directory}"
+        )
+
+    event_files = sorted(input_directory.glob("*.json"))
+    if not event_files:
+        raise FileNotFoundError(
+            f"No raw event JSON files found in: {input_directory}"
+        )
+
+    discovered_files: list[tuple[int, Path]] = []
+    for event_path in event_files:
+        try:
+            match_id = int(event_path.stem)
+        except ValueError as error:
+            raise ValueError(
+                "Raw event filenames must be numeric match IDs: "
+                f"{event_path.name}"
+            ) from error
+        discovered_files.append((match_id, event_path))
+
+    return tuple(sorted(discovered_files))
+
 
 def read_events(local_path: str | Path) -> pl.DataFrame:
     """Read and unnest events JSON for a single match.

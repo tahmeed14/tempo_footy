@@ -10,12 +10,15 @@ from tempoctrl.gradient_sports.event_transform import (
     cleanup_events,
     transform_events,
 )
-from tempoctrl.gradient_sports.ingest import read_events
+from tempoctrl.gradient_sports.ingest import (
+    RAW_EVENTS_DIRECTORY,
+    discover_event_files,
+    read_events,
+)
 from tempoctrl.pipeline_runtime import format_pipeline_runtime
 
 logger = logging.getLogger(__name__)
 PIPELINE_DIVIDER = "=" * 72
-RAW_EVENTS_DIRECTORY = Path("data/raw/gradient_sports/events")
 
 
 def configure_logging() -> None:
@@ -24,36 +27,6 @@ def configure_logging() -> None:
         level=logging.DEBUG,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
-
-
-def discover_event_files(
-    input_dir: str | Path = RAW_EVENTS_DIRECTORY,
-) -> tuple[tuple[int, Path], ...]:
-    """Discover raw event files and their numeric match IDs."""
-    input_directory = Path(input_dir)
-    if not input_directory.is_dir():
-        raise FileNotFoundError(
-            f"Raw event directory does not exist: {input_directory}"
-        )
-
-    event_files = sorted(input_directory.glob("*.json"))
-    if not event_files:
-        raise FileNotFoundError(
-            f"No raw event JSON files found in: {input_directory}"
-        )
-
-    discovered_files: list[tuple[int, Path]] = []
-    for event_path in event_files:
-        try:
-            match_id = int(event_path.stem)
-        except ValueError as error:
-            raise ValueError(
-                "Raw event filenames must be numeric match IDs: "
-                f"{event_path.name}"
-            ) from error
-        discovered_files.append((match_id, event_path))
-
-    return tuple(sorted(discovered_files))
 
 
 def run_pipeline(
