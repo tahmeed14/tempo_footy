@@ -107,6 +107,34 @@ interest and use the selected-match pipeline described below. Each selected
 match must still have matching event, tracking, metadata, and roster files in
 the required raw-data directories.
 
+### Managing generated data
+
+Inspect disk usage from the repository root:
+
+```bash
+du -sh data/*
+du -sh data/staged/gradient_sports/*
+du -sh data/processed/gradient_sports/*
+```
+
+Raw, staged, processed, and integrated data are separate retained layers.
+Repeated runs replace selected per-match outputs rather than creating a new
+version for every run. Keeping all layers still requires substantial space.
+
+Keep the original raw data, curated metadata, final analysis inputs, fitted
+models, and paper outputs needed for reproducibility. Treat staged data as a
+rebuildable cache: removing an unused stage saves space but makes its next
+run parse the raw source again. After downstream outputs are verified,
+processed tracking and integrated snapshots can also be removed and rebuilt
+from retained upstream inputs. Keep only active investigation subsets under
+`data/investigate/`, and archive completed investigations outside the working
+repository when they are still useful.
+
+Use selected-match runs during development to limit how many large tracking
+artifacts are created. `.gitignore` prevents generated data from entering Git;
+it does not reclaim local disk space. Pipeline runs do not automatically
+delete unrelated match files or completed investigations.
+
 ## Reproducible pipeline
 
 ### 1. Run the full development pipeline
@@ -150,6 +178,13 @@ run_pipeline([10516, 10517], overwrite_stage=True)
 
 By default, missing or stale staged files are created or refreshed, and
 current staged files are reused. `overwrite_stage=True` forces restaging.
+Event stages record the source's resolved path, modification time, and byte
+size in their Parquet metadata. A changed source or unreadable cache is
+restaged; legacy stages without this metadata are rebuilt once. Replacements
+are written and validated in a temporary directory before replacing the
+current file. Temporary files are cleaned after success or handled failures,
+and previous stage versions are not retained.
+
 Processed event files are regenerated for selected matches; unrelated event
 files and possession lookup rows are preserved.
 
