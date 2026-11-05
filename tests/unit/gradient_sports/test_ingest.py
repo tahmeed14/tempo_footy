@@ -165,3 +165,45 @@ def test_discover_event_files_rejects_nonnumeric_match_ids(
 
     assert filename in str(error_info.value)
     assert isinstance(error_info.value.__cause__, ValueError)
+
+
+@pytest.mark.parametrize(
+    ("filenames", "expected_id"),
+    [
+        (("1.json", "01.json"), 1),
+        (("10517.json", "010517.json"), 10517),
+    ],
+)
+def test_discover_event_files_rejects_duplicate_numeric_ids(
+    tmp_path: Path,
+    filenames: tuple[str, str],
+    expected_id: int,
+) -> None:
+    """Reject different filenames that resolve to one numeric match ID.
+
+    Behavior:
+        Require unique numeric IDs before returning discovered files.
+
+    Input:
+        Two empty JSON files whose stems differ only by leading zeros,
+        plus one unrelated match file.
+
+    Expected:
+        ValueError identifies the duplicate ID and both source paths.
+
+    Guards against:
+        Processing a match twice or overwriting its staged output.
+    """
+    (tmp_path / "2.json").touch()
+    for filename in filenames:
+        (tmp_path / filename).touch()
+
+    with pytest.raises(
+        ValueError, match="Duplicate raw event match ID"
+    ) as error_info:
+        discover_event_files(tmp_path)
+
+    message = str(error_info.value)
+    assert f"match ID {expected_id}:" in message
+    for filename in filenames:
+        assert str(tmp_path / filename) in message

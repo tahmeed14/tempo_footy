@@ -12,7 +12,10 @@ RAW_EVENTS_DIRECTORY = Path("data/raw/gradient_sports/events")
 def discover_event_files(
     input_dir: str | Path = RAW_EVENTS_DIRECTORY,
 ) -> tuple[tuple[int, Path], ...]:
-    """Discover raw event files and their numeric match IDs."""
+    """Discover raw event files with distinct numeric match IDs.
+
+    Raise ValueError when multiple filenames resolve to the same ID.
+    """
     input_directory = Path(input_dir)
     if not input_directory.is_dir():
         raise FileNotFoundError(
@@ -26,6 +29,7 @@ def discover_event_files(
         )
 
     discovered_files: list[tuple[int, Path]] = []
+    paths_by_match_id: dict[int, Path] = {}
     for event_path in event_files:
         try:
             match_id = int(event_path.stem)
@@ -34,6 +38,12 @@ def discover_event_files(
                 "Raw event filenames must be numeric match IDs: "
                 f"{event_path.name}"
             ) from error
+        if match_id in paths_by_match_id:
+            raise ValueError(
+                f"Duplicate raw event match ID {match_id}: "
+                f"{paths_by_match_id[match_id]} and {event_path}"
+            )
+        paths_by_match_id[match_id] = event_path
         discovered_files.append((match_id, event_path))
 
     return tuple(sorted(discovered_files))
