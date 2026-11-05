@@ -285,7 +285,9 @@ def reclassify_linesbrokentype(df_in: pl.DataFrame) -> pl.DataFrame:
     ).drop("pe_linesbrokentype")
 
 
-def reclassify_period(df_in: pl.LazyFrame | pl.DataFrame) -> pl.DataFrame:
+def reclassify_period(
+    df_in: pl.LazyFrame | pl.DataFrame,
+) -> pl.LazyFrame | pl.DataFrame:
     """Reclassify match-period values."""
     return df_in.with_columns(
         pl.col("ge_period")
