@@ -53,7 +53,11 @@ def resolve_event_paths(
     match_id: int | str,
     raw_path: str | Path | None = None,
 ) -> tuple[Path, Path]:
-    """Return the raw and staged paths for one event match."""
+    """Resolve event paths and reject conflicting numeric source names.
+
+    Custom nonnumeric filenames are allowed; their content is validated
+    when staging. Numeric filenames must identify the requested match.
+    """
     resolved_raw_path = (
         Path(raw_path)
         if raw_path is not None
@@ -62,7 +66,48 @@ def resolve_event_paths(
     staged_path = Path(
         f"data/staged/gradient_sports/events/{match_id}.parquet"
     )
+    try:
+        filename_id = int(resolved_raw_path.stem)
+    except ValueError:
+        pass
+    else:
+        if filename_id != int(match_id):
+            raise ValueError(
+                f"Raw event filename match ID mismatch: expected {match_id}, "
+                f"found {filename_id} in {resolved_raw_path}"
+            )
     return resolved_raw_path, staged_path
+
+
+def _validate_event_match_id(
+    df_events: pl.LazyFrame,
+    match_id: int | str,
+    source_path: Path,
+) -> None:
+    """Require every source row to identify the requested numeric match.
+
+    Read only gameId from cached Parquet.
+    Accept integer IDs or canonical numeric strings.
+    Reject missing, null, empty, or mixed IDs.
+    """
+    expected_id = int(match_id)
+    schema = df_events.collect_schema()
+    if "gameId" not in schema:
+        raise ValueError(f"Event data is missing gameId: {source_path}")
+    if not (schema["gameId"].is_integer() or schema["gameId"] == pl.String):
+        raise ValueError(f"Event data has invalid gameId dtype: {source_path}")
+    game_ids = (
+        df_events.select("gameId").unique().collect().get_column("gameId")
+    )
+    if (
+        game_ids.len() != 1
+        or game_ids.null_count() > 0
+        or str(game_ids.item()) != str(expected_id)
+    ):
+        raise ValueError(
+            f"Event match ID mismatch in {source_path}: "
+            f"expected {expected_id}, found {game_ids.to_list()}"
+        )
 
 
 def event_stage_is_current(
@@ -71,18 +116,31 @@ def event_stage_is_current(
     *,
     raw_path: str | Path | None = None,
 ) -> bool:
-    """Return whether an existing staged event file can be reused."""
+    """Reuse a current stage only when all rows match the requested ID.
+
+    A stage with invalid match IDs is not current and must be restaged.
+    A conflicting numeric source filename raises ValueError.
+    """
     resolved_raw_path, staged_path = resolve_event_paths(match_id, raw_path)
     if not resolved_raw_path.is_file():
         raise FileNotFoundError(
             f"Raw event file not found: {resolved_raw_path}"
         )
 
-    return (
+    is_current = (
         staged_path.is_file()
         and staged_path.stat().st_mtime >= resolved_raw_path.stat().st_mtime
         and not overwrite
     )
+    if not is_current:
+        return False
+    try:
+        _validate_event_match_id(
+            pl.scan_parquet(staged_path), match_id, staged_path
+        )
+    except ValueError:
+        return False
+    return True
 
 
 def stage_events(
@@ -98,6 +156,9 @@ def stage_events(
     always restage and replace any existing staged file.
 
     Read the full JSON schema and preserve nested values and row order.
+    Validate gameId against the requested match before writing.
+    Invalid cached match IDs trigger restaging. Numeric source filenames
+    must also agree with the requested ID.
 
     Args:
         match_id: Match identifier used for the staged filename.
@@ -106,6 +167,10 @@ def stage_events(
 
     Returns:
         The path of the reused or newly written staged Parquet file.
+
+    Raises:
+        ValueError: If filenames or gameId values disagree with the
+            requested match, or source IDs are missing or invalid.
 
     """
     resolved_raw_path, staged_path = resolve_event_paths(match_id, raw_path)
@@ -117,6 +182,7 @@ def stage_events(
         return staged_path
 
     df = pl.read_json(resolved_raw_path, infer_schema_length=None)
+    _validate_event_match_id(df.lazy(), match_id, resolved_raw_path)
     staged_path.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(staged_path, compression="zstd")
     return staged_path

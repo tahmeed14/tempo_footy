@@ -47,12 +47,14 @@ def raw_event_path(
                     "marker": 30,
                     "event": {"type": "PASS"},
                     "tags": ["open"],
+                    "gameId": 101,
                 },
-                {"marker": 10, "event": None, "tags": None},
+                {"marker": 10, "event": None, "tags": None, "gameId": 101},
                 {
                     "marker": 20,
                     "event": {"type": "UNKNOWN", "value": 7},
                     "tags": [],
+                    "gameId": 101,
                 },
             ]
         ),
@@ -123,11 +125,13 @@ def test_stage_and_scan_preserve_nested_rows_and_source_order(
                 {"type": "UNKNOWN", "value": 7},
             ],
             "tags": [["open"], None, []],
+            "gameId": [101, 101, 101],
         },
         schema={
             "marker": pl.Int64,
             "event": pl.Struct({"type": pl.String, "value": pl.Int64}),
             "tags": pl.List(pl.String),
+            "gameId": pl.Int64,
         },
     )
 
@@ -243,14 +247,17 @@ def test_stage_events_refreshes_stale_or_forced_stage(
         Keeping old rows or applying overwrite to processed outputs.
     """
     staged_path = stage_events(101)
-    raw_event_path.write_text('[{"marker": 99}]', encoding="utf-8")
+    raw_event_path.write_text(
+        '[{"marker": 99, "gameId": 101}]', encoding="utf-8"
+    )
     os.utime(staged_path, (2000, 2000))
     raw_mtime = 1000 if overwrite else 3000
     os.utime(raw_event_path, (raw_mtime, raw_mtime))
 
     assert stage_events(101, overwrite) == staged_path
     assert_frame_equal(
-        pl.read_parquet(staged_path), pl.DataFrame({"marker": [99]})
+        pl.read_parquet(staged_path),
+        pl.DataFrame({"marker": [99], "gameId": [101]}),
     )
 
 
@@ -275,12 +282,15 @@ def test_stage_events_honors_custom_raw_path(
     """
     monkeypatch.chdir(tmp_path)
     raw_path = tmp_path / "custom.json"
-    raw_path.write_text('[{"marker": 42}]', encoding="utf-8")
+    raw_path.write_text(
+        '[{"marker": 42, "gameId": "101"}]', encoding="utf-8"
+    )
 
     staged_path = stage_events(101, raw_path=str(raw_path))
 
     assert_frame_equal(
-        pl.read_parquet(staged_path), pl.DataFrame({"marker": [42]})
+        pl.read_parquet(staged_path),
+        pl.DataFrame({"marker": [42], "gameId": ["101"]}),
     )
     assert event_stage_is_current(101, raw_path=raw_path)
 

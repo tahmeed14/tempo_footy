@@ -86,7 +86,8 @@ def test_run_pipeline_preserves_processing_and_controls_restaging(
     )
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw_path.write_text(
-        '[{"marker": 20}, {"marker": 10}]', encoding="utf-8"
+        '[{"marker": 20, "gameId": 101}, {"marker": 10, "gameId": 101}]',
+        encoding="utf-8",
     )
     event_path = str(raw_path) if custom_source else None
     output_paths = (
@@ -121,6 +122,7 @@ def test_run_pipeline_preserves_processing_and_controls_restaging(
             {
                 "event_number": pl.Series([1, 2], dtype=pl.UInt32),
                 "marker": [20, 10],
+                "gameId": [101, 101],
             }
         ),
     )
@@ -130,6 +132,7 @@ def test_run_pipeline_preserves_processing_and_controls_restaging(
             {
                 "event_number": pl.Series([1, 2], dtype=pl.UInt32),
                 "marker": [20, 10],
+                "gameId": [101, 101],
                 "transformed": [True, True],
                 "featured": [True, True],
                 "cleaned": [True, True],
@@ -143,7 +146,9 @@ def test_run_pipeline_preserves_processing_and_controls_restaging(
     for output_path in output_paths:
         assert f"Event pipeline output: {output_path}" in caplog.text
 
-    raw_path.write_text('[{"marker": 99}]', encoding="utf-8")
+    raw_path.write_text(
+        '[{"marker": 99, "gameId": 101}]', encoding="utf-8"
+    )
     os.utime(raw_path, (1000, 1000))
     os.utime(staged_path, (2000, 2000))
     steps.reset_mock()
@@ -499,3 +504,100 @@ def test_main_runs_one_batch_and_logs_runtime_on_failure(
     assert (
         "Event pipeline runtime: 0 hours, 1 minute, 5.000 seconds"
     ) in caplog.text
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["numeric_filename", "wrong_content", "mixed_ids", "null_id"]
+)
+def test_pipeline_rejects_match_identity_mismatches_before_processing(
+    pipeline_events: ModuleType,
+    raw_event_sources: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+) -> None:
+    """Stop mismatched inputs before publishing stages or event outputs.
+
+    Starting datasets:
+        Two valid raw matches. Request match 101 with source 202.json,
+        or change the 101.json contents to identify only 202, include
+        both matches, or contain a null gameId row.
+
+    Expected:
+        Staging raises ValueError before transforms or the writer run.
+        No joins occur and no event rows are published. No staged,
+        processed, or curated output directories are created.
+
+    Guards against:
+        Producing another match's files, accepting mixed IDs in one
+        source, or creating mislabeled cached stages.
+    """
+    transform = Mock()
+    writer = Mock()
+    monkeypatch.setattr(pipeline_events, "transform_events", transform)
+    monkeypatch.setattr(pipeline_events, "load_events", writer)
+    if mismatch != "numeric_filename":
+        rows = json.loads(raw_event_sources[0].read_text(encoding="utf-8"))
+        if mismatch == "wrong_content":
+            for row in rows:
+                row["gameId"] = 202
+        else:
+            rows[-1]["gameId"] = 202 if mismatch == "mixed_ids" else None
+        raw_event_sources[0].write_text(json.dumps(rows), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="match ID mismatch"):
+        if mismatch == "numeric_filename":
+            pipeline_events.run_pipeline(101, raw_event_sources[1])
+        else:
+            pipeline_events.run_pipeline()
+
+    transform.assert_not_called()
+    writer.assert_not_called()
+    assert not Path("data/staged").exists()
+    assert not Path("data/processed").exists()
+    assert not Path("data/curated").exists()
+
+
+def test_pipeline_repairs_cached_match_identity_before_processing(
+    pipeline_events: ModuleType,
+    raw_event_sources: tuple[Path, Path],
+) -> None:
+    """Repair a mislabeled cache before running the real event pipeline.
+
+    Starting datasets:
+        Valid raw matches 101 and 202, but a newer staged 101.parquet
+        containing all three rows from match 202. Select only match 101.
+
+    Expected:
+        The pipeline restages valid raw 101 automatically. Its staged
+        file has only gameId 101, and its processed file has three rows
+        and 31 columns identifying game_id 101. The shared lookup has
+        one match-101 identity row. No joins or unmatched-row filtering
+        occur and no match-202 event file is written.
+
+    Guards against:
+        Reusing polluted cache identities or requiring manual overwrite
+        before valid sources can produce the correct downstream files.
+    """
+    staged_path = Path("data/staged/gradient_sports/events/101.parquet")
+    staged_path.parent.mkdir(parents=True)
+    pl.read_json(raw_event_sources[1], infer_schema_length=None).write_parquet(
+        staged_path
+    )
+    os.utime(raw_event_sources[0], (1000, 1000))
+    os.utime(staged_path, (2000, 2000))
+
+    paths = pipeline_events.run_pipeline(101)
+
+    assert paths[0] == Path(
+        "data/processed/gradient_sports/events/101.parquet"
+    )
+    assert pl.read_parquet(staged_path)["gameId"].to_list() == [101, 101, 101]
+    output = pl.read_parquet(paths[0])
+    assert output.shape == (3, 31)
+    assert output["game_id"].to_list() == [101, 101, 101]
+    lookup = pl.read_parquet(paths[1])
+    assert lookup.shape == (1, 6)
+    assert lookup["game_id"].item() == 101
+    assert not Path(
+        "data/processed/gradient_sports/events/202.parquet"
+    ).exists()
