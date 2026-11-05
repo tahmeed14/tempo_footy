@@ -236,14 +236,16 @@ def scan_events(
 ) -> pl.LazyFrame:
     """Scan selected staged events and add one-based event numbers.
 
-    A single file retains its source row numbering. For multiple files,
-    number rows within each ``gameId`` across the combined input.
+    Number rows within each ``gameId`` across the combined input,
+    including directory and wildcard scans or a single combined file.
+    A single scan without ``gameId`` retains global row numbering.
     Preserve supplied file order and source row order within each file.
     Combine differing source schemas by name and fill absent fields with
     nulls, promoting compatible dtypes when needed.
 
     Args:
-        df_path: A staged Parquet path or sequence of selected paths.
+        df_path: A staged Parquet file, directory, wildcard pattern, or
+            sequence of selected paths.
 
     Returns:
         A lazy query with a leading UInt32 ``event_number`` column.
@@ -258,11 +260,10 @@ def scan_events(
         raise ValueError("At least one staged event Parquet path is required.")
 
     scans = [pl.scan_parquet(path) for path in paths]
-    if len(scans) == 1:
-        return scans[0].with_row_index("event_number", offset=1)
-
     for path, scan in zip(paths, scans, strict=True):
         if "gameId" not in scan.collect_schema():
+            if len(scans) == 1:
+                return scan.with_row_index("event_number", offset=1)
             raise ValueError(f"Staged event file is missing gameId: {path}")
 
     return pl.concat(scans, how="diagonal_relaxed").select(

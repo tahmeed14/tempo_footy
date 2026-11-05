@@ -9,6 +9,106 @@ from polars.testing import assert_frame_equal
 from tempoctrl.gradient_sports.ingest import scan_events
 
 
+@pytest.mark.parametrize(
+    "input_form",
+    ["list", "tuple", "directory", "wildcard", "combined", "combined_list"],
+)
+@pytest.mark.parametrize("id_dtype", [pl.Int64, pl.String])
+def test_scan_events_numbers_matches_consistently_across_input_forms(
+    tmp_path: Path,
+    input_form: str,
+    id_dtype: pl.DataType,
+) -> None:
+    """Number matches consistently regardless of input packaging.
+
+    Behavior:
+        Restart numbering within each gameId for every supported input
+        form, preserving row order and numbering before filters.
+
+    Input:
+        Four interleaved events from matches 202 and 101, with integer
+        or string IDs. Supply two files through a list, tuple,
+        directory, or wildcard, or one combined file directly or in a
+        list.
+
+    Expected:
+        Four unchanged rows with leading UInt32 numbers 1, 1, 2, 2.
+        Filtering to the last two markers retains numbers 2, 2.
+        No joins occur and no unmatched rows are removed.
+
+    Guards against:
+        Global numbering for directory, wildcard, or combined-file
+        scans, row reordering, dtype changes, or filter renumbering.
+    """
+    source = pl.DataFrame(
+        {"gameId": [202, 101, 202, 101], "marker": [40, 30, 20, 10]}
+    ).with_columns(pl.col("gameId").cast(id_dtype))
+    selection: str | Path | list[Path] | tuple[Path, ...]
+    if input_form in ("combined", "combined_list"):
+        combined = tmp_path / "combined.parquet"
+        source.write_parquet(combined)
+        selection = combined if input_form == "combined" else [combined]
+    else:
+        first = tmp_path / "a.parquet"
+        second = tmp_path / "b.parquet"
+        source.head(2).write_parquet(first)
+        source.tail(2).write_parquet(second)
+        if input_form == "list":
+            selection = [first, second]
+        elif input_form == "tuple":
+            selection = (first, second)
+        elif input_form == "directory":
+            selection = tmp_path
+        else:
+            selection = str(tmp_path / "*.parquet")
+
+    result = scan_events(selection)
+    expected = pl.DataFrame(
+        {
+            "event_number": pl.Series([1, 1, 2, 2], dtype=pl.UInt32),
+            "gameId": pl.Series([202, 101, 202, 101]).cast(id_dtype),
+            "marker": [40, 30, 20, 10],
+        }
+    )
+    assert isinstance(result, pl.LazyFrame)
+    assert_frame_equal(result.collect(), expected)
+    assert_frame_equal(
+        result.filter(pl.col("marker") <= 20).collect(), expected.tail(2)
+    )
+
+
+def test_scan_events_preserves_empty_single_match_schema(
+    tmp_path: Path,
+) -> None:
+    """Keep typed empty single-file scans empty after window numbering.
+
+    Behavior:
+        Apply per-match numbering to an empty file with a gameId column.
+
+    Input:
+        One empty Parquet with String gameId and Int64 marker columns.
+
+    Expected:
+        Zero rows with a leading UInt32 event_number column and the
+        original source schema.
+
+    Guards against:
+        Fabricated rows or schema changes in the new single-file window.
+    """
+    path = tmp_path / "empty.parquet"
+    source = pl.DataFrame(schema={"gameId": pl.String, "marker": pl.Int64})
+    source.write_parquet(path)
+    expected = pl.DataFrame(
+        schema={
+            "event_number": pl.UInt32,
+            "gameId": pl.String,
+            "marker": pl.Int64,
+        }
+    )
+
+    assert_frame_equal(scan_events(path).collect(), expected)
+
+
 @pytest.mark.parametrize("use_tuple", [False, True])
 def test_scan_events_numbers_matches_across_selected_files(
     tmp_path: Path,
