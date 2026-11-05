@@ -97,12 +97,12 @@ def add_game_state_features(df_in: pl.DataFrame) -> pl.DataFrame:
 
 # Possession Player Features
 def create_num_challenges(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Count defender challenges for each player possession."""
+    """Count defender challenges per match and player possession."""
     return df_in.with_columns(
         pl.col("pe_possessioneventtype")
         .eq("CH")
         .sum()
-        .over(["gameeventid", "match_team_player_possession_id"])
+        .over("gameid", "gameeventid", "match_team_player_possession_id")
         .alias("defender_num_challenges"),
     )
 
