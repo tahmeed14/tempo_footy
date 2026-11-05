@@ -213,19 +213,19 @@ def select_events_columns(df_in: pl.DataFrame) -> pl.DataFrame:
 
 
 def drop_pen_shootouts(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Remove shootout events occurring after the end of normal play.
+    """Remove events after the match ends before a penalty shootout.
 
     Find the last event in each match where ``ge_gameeventtype`` is
     ``"END"`` and ``ge_endtype`` is ``"G"``. Keep that event and every
-    earlier event in the match. If a match has no qualifying end event,
-    retain all of its rows.
+    earlier event, including extra time when played. If a match has no
+    qualifying end event, retain all of its rows.
 
     Args:
         df_in: Event data containing ``gameid``, ``event_number``,
             ``ge_gameeventtype``, and ``ge_endtype``.
 
     Returns:
-        Event data through the end of normal play for each match.
+        Event data through each match's final pre-shootout end marker.
 
     """
     normal_time_ended = (pl.col("ge_gameeventtype") == "END") & (
