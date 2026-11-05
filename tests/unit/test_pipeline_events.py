@@ -70,8 +70,8 @@ def test_run_pipeline_preserves_processing_and_controls_restaging(
     Expected:
         No joins occur. Both initial rows reach the eager transforms
         with UInt32 event numbers 1 and 2, including their source order.
-        No unmatched filtering occurs. Replacement marker 99 appears
-        only when restaging is forced. Processing steps run in order.
+        No unmatched filtering occurs. Changed source metadata triggers
+        restaging despite its older timestamp. Steps run in order.
         The original two writer paths are returned and logged.
 
     Guards against:
@@ -157,10 +157,7 @@ def test_run_pipeline_preserves_processing_and_controls_restaging(
         101, event_path, overwrite_stage=overwrite_stage
     ) == output_paths
 
-    expected_markers = [99] if overwrite_stage else [20, 10]
-    assert steps.transform.call_args.args[0]["marker"].to_list() == (
-        expected_markers
-    )
+    assert steps.transform.call_args.args[0]["marker"].to_list() == [99]
 
 
 @pytest.fixture

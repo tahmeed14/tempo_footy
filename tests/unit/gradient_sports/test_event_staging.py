@@ -172,8 +172,8 @@ def test_stage_events_reuses_current_file_without_reading_json(
     Guards against:
         Repeating JSON parsing or rewriting a reusable stage every run.
     """
-    staged_path = stage_events(101)
     os.utime(raw_event_path, (1000, 1000))
+    staged_path = stage_events(101)
     os.utime(staged_path, (2000, 2000))
     staged_bytes = staged_path.read_bytes()
     staged_mtime = staged_path.stat().st_mtime_ns
@@ -190,35 +190,42 @@ def test_stage_events_reuses_current_file_without_reading_json(
 
 
 @pytest.mark.parametrize(
-    ("overwrite", "raw_mtime", "expected_current"),
+    ("overwrite", "recorded_mtime", "raw_mtime", "expected_current"),
     [
-        (False, 1000, True),
-        (False, 2000, True),
-        (False, 3000, False),
-        (True, 1000, False),
+        (False, 1000, 1000, True),
+        (False, 2000, 2000, True),
+        (False, 1000, 3000, False),
+        (False, 1000, 500, False),
+        (False, 1000, 2000, False),
+        (True, 1000, 1000, False),
     ],
 )
 def test_event_stage_freshness_respects_source_time_and_overwrite(
     raw_event_path: Path,
     overwrite: bool,
+    recorded_mtime: int,
     raw_mtime: int,
     expected_current: bool,
 ) -> None:
-    """Resolve cache freshness from source time and the overwrite flag.
+    """Resolve freshness from recorded source times and overwrite.
 
     Behavior:
-        Reuse equal or newer stages unless restaging is forced.
+        Reuse stages only when source metadata agrees and overwrite is
+        false, even when changed source timestamps move backward.
 
     Input:
-        A stage timestamp of 2000 and older, equal, or newer sources,
-        with overwrite enabled for an otherwise current stage.
+        A stage timestamp of 2000 and sources with unchanged, older,
+        equal, or newer times relative to recorded source metadata.
 
     Expected:
-        Only stages as new as the source and not forced are current.
+        Only stages with matching provenance and no forced overwrite
+        are current. Equal source/stage times are valid when the
+        recorded source time also agrees.
 
     Guards against:
         Reusing stale data or ignoring the overwrite flag.
     """
+    os.utime(raw_event_path, (recorded_mtime, recorded_mtime))
     staged_path = stage_events(101)
     os.utime(staged_path, (2000, 2000))
     os.utime(raw_event_path, (raw_mtime, raw_mtime))

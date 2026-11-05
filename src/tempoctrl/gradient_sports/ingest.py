@@ -3,6 +3,7 @@
 import bz2
 from collections.abc import Sequence
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import polars as pl
 
@@ -118,10 +119,12 @@ def event_stage_is_current(
     *,
     raw_path: str | Path | None = None,
 ) -> bool:
-    """Reuse a current stage only when all rows match the requested ID.
+    """Reuse a stage only when its source and match identity agree.
 
-    A stage with invalid match IDs is not current and must be restaged.
-    A conflicting numeric source filename raises ValueError.
+    Require matching source path, modification time, and byte size in
+    the Parquet metadata. Missing metadata, unreadable cached data, or
+    invalid match IDs require restaging. Conflicting numeric source
+    filenames raise ValueError.
     """
     resolved_raw_path, staged_path = resolve_event_paths(match_id, raw_path)
     if not resolved_raw_path.is_file():
@@ -136,13 +139,35 @@ def event_stage_is_current(
     )
     if not is_current:
         return False
+    expected_metadata = _event_source_metadata(resolved_raw_path)
     try:
+        cached_metadata = pl.read_parquet_metadata(staged_path)
+        if any(
+            cached_metadata.get(key) != value
+            for key, value in expected_metadata.items()
+        ):
+            return False
         _validate_event_match_id(
             pl.scan_parquet(staged_path), match_id, staged_path
         )
-    except ValueError:
+    except (OSError, pl.exceptions.PolarsError, ValueError):
         return False
     return True
+
+
+def _event_source_metadata(raw_path: Path) -> dict[str, str]:
+    """Describe the source used to create one event stage.
+
+    Keep provenance in the Parquet footer without adding data columns
+    or sidecar files. Resolve paths so equivalent path spellings agree.
+    """
+    source_stat = raw_path.stat()
+    return {
+        "tempoctrl.event_stage.version": "1",
+        "tempoctrl.event_stage.source_path": str(raw_path.resolve()),
+        "tempoctrl.event_stage.source_mtime_ns": str(source_stat.st_mtime_ns),
+        "tempoctrl.event_stage.source_size": str(source_stat.st_size),
+    }
 
 
 def stage_events(
@@ -153,14 +178,19 @@ def stage_events(
 ) -> Path:
     """Stage raw event JSON as Parquet without adding derived columns.
 
-    With overwrite=False, create a missing stage, replace a stage older
-    than the raw JSON, and reuse a current stage. With overwrite=True,
-    always restage and replace any existing staged file.
+    With overwrite=False, create missing stages and replace stale or
+    invalid stages. Reuse a current stage only when its recorded source
+    path, modification time, and size still match the requested source.
+    With overwrite=True, always restage.
 
     Read the full JSON schema and preserve nested values and row order.
     Validate gameId against the requested match before writing.
     Invalid cached match IDs trigger restaging. Numeric source filenames
     must also agree with the requested ID.
+
+    Write and validate a temporary Parquet before replacing the stage.
+    Failed writes preserve the old stage and clean up temporary files.
+    Legacy stages without source metadata are rebuilt once.
 
     Args:
         match_id: Match identifier used for the staged filename.
@@ -183,10 +213,21 @@ def stage_events(
     ):
         return staged_path
 
+    source_metadata = _event_source_metadata(resolved_raw_path)
     df = pl.read_json(resolved_raw_path, infer_schema_length=None)
     _validate_event_match_id(df.lazy(), match_id, resolved_raw_path)
     staged_path.parent.mkdir(parents=True, exist_ok=True)
-    df.write_parquet(staged_path, compression="zstd")
+    with TemporaryDirectory(
+        dir=staged_path.parent, prefix=f".{staged_path.stem}-"
+    ) as temporary_dir:
+        temporary_path = Path(temporary_dir) / staged_path.name
+        df.write_parquet(
+            temporary_path, compression="zstd", metadata=source_metadata
+        )
+        _validate_event_match_id(
+            pl.scan_parquet(temporary_path), match_id, temporary_path
+        )
+        temporary_path.replace(staged_path)
     return staged_path
 
 

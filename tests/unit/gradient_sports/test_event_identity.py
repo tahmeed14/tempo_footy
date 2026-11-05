@@ -240,12 +240,13 @@ def test_stage_events_repairs_invalid_cached_match_ids(
     monkeypatch.chdir(tmp_path)
     source_path = tmp_path / "snapshot.json"
     source_path.write_text('[{"gameId": 101, "marker": 7}]', encoding="utf-8")
+    os.utime(source_path, (1000, 1000))
     staged_path = stage_events(101, raw_path=source_path)
+    cached_metadata = pl.read_parquet_metadata(staged_path)
     bad_cache = pl.DataFrame(
         {"marker": [0]} if cached_ids is None else {"gameId": cached_ids}
     )
-    bad_cache.write_parquet(staged_path)
-    os.utime(source_path, (1000, 1000))
+    bad_cache.write_parquet(staged_path, metadata=cached_metadata)
     os.utime(staged_path, (2000, 2000))
 
     assert not event_stage_is_current(101, raw_path=source_path)
