@@ -314,8 +314,8 @@ def drop_foul_events(df_in: pl.DataFrame) -> pl.DataFrame:
     for dissent are added as two separate fouls. The main foul
     is added on the possession event where it happened, and
     additional fouls are added as a separate row after the next
-    OUT events. Additional fouls have gameEventId "FOUL" and
-    possessionEventId "FO" even though technically they are not
+    OUT events. Additional fouls have gameEventType "FOUL" and
+    possessionEventType "FO" even though technically they are not
     separate events.
 
     Null and all other game-event types are retained.
