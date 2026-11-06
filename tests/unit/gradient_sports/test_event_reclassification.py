@@ -7,6 +7,83 @@ from polars.testing import assert_frame_equal
 from tempoctrl.gradient_sports import event_transform
 
 
+@pytest.mark.parametrize("source_dtype", [pl.Null, pl.String])
+@pytest.mark.parametrize("row_count", [0, 2])
+def test_setpiece_reclassification_accepts_null_columns(
+    source_dtype: pl.DataType,
+    row_count: int,
+) -> None:
+    """Map null set-piece columns to String N/A values.
+
+    Behavior:
+        Support Null dtype and String-typed nulls, including empty data.
+
+    Input:
+        Zero or two null set-piece values alongside UInt32 event
+        numbers in unsorted order.
+
+    Expected:
+        Keep the existing columns and their order. Replace set-piece
+        values with String N/A, preserving event numbers and row count.
+
+    Guards against:
+        Null-dtype replacement errors, fabricated empty rows, column
+        renames, row reordering, and output dtype changes.
+    """
+    event_numbers = pl.Series([2, 1][:row_count], dtype=pl.UInt32)
+    frame = pl.DataFrame(
+        {
+            "event_number": event_numbers,
+            "ge_setpiecetype": pl.Series(
+                [None] * row_count, dtype=source_dtype
+            ),
+        }
+    )
+    expected = pl.DataFrame(
+        {
+            "event_number": event_numbers,
+            "ge_setpiecetype": pl.Series(
+                ["N/A"] * row_count, dtype=pl.String
+            ),
+        }
+    )
+
+    result = event_transform.rename_classes_setpieces(frame)
+    assert_frame_equal(result, expected)
+
+
+def test_setpiece_reclassification_preserves_existing_mappings() -> None:
+    """Retain set-piece labels when adding Null-dtype support.
+
+    Behavior:
+        Map all known codes and default unknown and null String values.
+
+    Input:
+        Ten rows containing O, D, F, G, K, P, T, C, UNKNOWN, and null.
+
+    Expected:
+        Explicit readable labels in source order, ending in two N/A
+        values. Retain the ge_setpiecetype column with String dtype.
+
+    Guards against:
+        Changing existing mappings, unknown/null defaults, or schema.
+    """
+    frame = pl.DataFrame(
+        {"ge_setpiecetype": [
+            "O", "D", "F", "G", "K", "P", "T", "C", "UNKNOWN", None
+        ]}
+    )
+    expected = pl.DataFrame(
+        {"ge_setpiecetype": [
+            "Open Play", "Drop Kick", "Free Kick", "Goal Kick", "Kickoff",
+            "Penalty", "Throw In", "Corner", "N/A", "N/A",
+        ]}
+    )
+
+    result = event_transform.rename_classes_setpieces(frame)
+    assert_frame_equal(result, expected)
+
+
 @pytest.mark.parametrize(
     ("function_name", "sources", "targets", "string_default"),
     [

@@ -326,9 +326,13 @@ def reclassify_period(
 
 
 def rename_classes_setpieces(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Rename set-piece classes."""
+    """Rename set-piece classes, mapping nulls and unknowns to N/A.
+
+    Accept String and entirely Null-typed source columns.
+    """
     return df_in.with_columns(
         pl.col("ge_setpiecetype")
+        .cast(pl.String)
         .replace_strict(SETPIECE_MAPPER, default="N/A")
         .fill_null("Not available")
         # .alias("set_piece_type")
