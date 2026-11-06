@@ -1,5 +1,6 @@
 """Test per-match event writes and batch possession-lookup updates."""
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -113,6 +114,279 @@ def player_lookup(tmp_path: Path) -> Path:
         }
     ).write_parquet(path)
     return path
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+@pytest.mark.parametrize("cleanup_failure", ["first", "all"])
+def test_cleanup_errors_do_not_fail_successful_event_publication(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+    caplog: pytest.LogCaptureFixture,
+    cleanup_failure: str,
+) -> None:
+    """Report cleanup failures while keeping publication successful.
+
+    Starting datasets:
+        Five replacement events for matches 101 and 202, an unrelated
+        match, and optional previous batch outputs. Cleanup fails for
+        only the first temporary directory or all three directories.
+
+    Expected:
+        Return both match paths and the shared lookup. Keep all three
+        and two event rows, including null IDs, and publish both new
+        possession IDs. No metadata joins occur. Attempt all three
+        cleanups and warn with each leftover directory's path. Other
+        temporary directories are removed; unrelated files survive.
+
+    Guards against:
+        Housekeeping errors turning successful publication into failure,
+        aborting later cleanups, or hiding leftover backup locations.
+    """
+    kwargs, snapshots = publication_state
+    original_cleanup = event_load.rmtree
+    attempted: list[Path] = []
+    failed: list[Path] = []
+
+    def fail_cleanup(path: Path) -> None:
+        """Fail selected cleanups and record every directory attempted.
+
+        Input is a temporary directory. Expect PermissionError for the
+        first or every directory; clean others normally. Recording all
+        paths catches cleanup stopping after the first failure.
+        """
+        attempted.append(path)
+        if cleanup_failure == "all" or len(attempted) == 1:
+            failed.append(path)
+            raise PermissionError("simulated cleanup failure")
+        original_cleanup(path)
+
+    with (
+        caplog.at_level(logging.WARNING, logger=event_load.__name__),
+        patch.object(event_load, "rmtree", fail_cleanup),
+    ):
+        paths = event_load.load_events(replacement_events, **kwargs)
+
+    assert paths == (
+        kwargs["output_dir"] / "101.parquet",
+        kwargs["output_dir"] / "202.parquet",
+        kwargs["possession_lookup_path"],
+    )
+    for path in paths[:-1]:
+        assert_frame_equal(
+            pl.read_parquet(path),
+            replacement_events.filter(pl.col("game_id") == int(path.stem)),
+        )
+    lookup = pl.read_parquet(paths[-1])
+    assert lookup.filter(pl.col("game_id").is_in([101, 202]))[
+        "match_team_player_possession_id"
+    ].to_list() == ["101_p1_new", "202_p2_new"]
+    assert len(attempted) == 3
+    assert len(failed) == (3 if cleanup_failure == "all" else 1)
+    assert all(path.exists() == (path in failed) for path in attempted)
+    warnings = [
+        record for record in caplog.records
+        if record.name == event_load.__name__
+    ]
+    assert len(warnings) == len(failed)
+    for path in failed:
+        assert any(str(path) in record.getMessage() for record in warnings)
+    unrelated = kwargs["output_dir"] / "303.parquet"
+    assert unrelated.read_bytes() == snapshots[unrelated]
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+@pytest.mark.parametrize("cleanup_failure", ["first", "all"])
+@pytest.mark.parametrize("failure_phase", ["write", "validation", "publish"])
+def test_cleanup_errors_preserve_the_original_event_output_failure(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+    caplog: pytest.LogCaptureFixture,
+    cleanup_failure: str,
+    failure_phase: str,
+) -> None:
+    """Retain the original error and continue cleanup after failures.
+
+    Starting datasets:
+        A two-match replacement batch and optional prior outputs. The
+        lookup's write, validation, or publication fails after all three
+        temporary directories exist. The first or every cleanup fails.
+
+    Expected:
+        Re-raise the identical original exception, with a note for each
+        cleanup error. Attempt every cleanup, warn with leftover paths,
+        and preserve every original public file byte for byte. Remove
+        newly published files during rollback. No metadata joins occur,
+        and none of the five incoming rows is published on failure.
+
+    Guards against:
+        Cleanup masking write, validation, or replacement errors,
+        skipping other directories, or changing rollback behavior.
+    """
+    kwargs, snapshots = publication_state
+    original_cleanup = event_load.rmtree
+    original_write = pl.DataFrame.write_parquet
+    original_read = pl.read_parquet
+    original_replace = Path.replace
+    primary_error = (
+        ValueError("original validation failure")
+        if failure_phase == "validation"
+        else OSError(f"original {failure_phase} failure")
+    )
+    attempted: list[Path] = []
+    failed: list[Path] = []
+
+    def fail_write(
+        frame: pl.DataFrame,
+        file: str | Path,
+        **write_kwargs: object,
+    ) -> None:
+        """Inject the original error while writing the pending lookup.
+
+        Input is a frame and path. In write mode only lookup fails;
+        other writes proceed normally. This establishes the root error
+        that subsequent cleanup must preserve.
+        """
+        if failure_phase == "write" and Path(file).name == "lookup.parquet":
+            raise primary_error
+        original_write(frame, file, **write_kwargs)
+
+    def fail_validation(
+        file: str | Path,
+        **read_kwargs: object,
+    ) -> pl.DataFrame:
+        """Inject the original error when validating the pending lookup.
+
+        Input is a pending or public Parquet path. Fail only the pending
+        lookup in validation mode; preserve ordinary reads of existing
+        files so the simulated error occurs at the intended boundary.
+        """
+        path = Path(file)
+        if (
+            failure_phase == "validation"
+            and path.name == "lookup.parquet"
+            and path.parent.name.startswith(".event-output-")
+        ):
+            raise primary_error
+        return original_read(file, **read_kwargs)
+
+    def fail_publication(source: Path, target: str | Path) -> Path:
+        """Inject the original error at lookup publication only.
+
+        Input is a pending or backup file and destination. Fail the
+        pending lookup in publish mode, allowing every rollback to
+        succeed. This tests cleanup after an actual partial publication.
+        """
+        if (
+            failure_phase == "publish"
+            and Path(target).name == "lookup.parquet"
+            and source.parent.name.startswith(".event-output-")
+        ):
+            raise primary_error
+        return original_replace(source, target)
+
+    def fail_cleanup(path: Path) -> None:
+        """Record all cleanups while failing the first or every attempt.
+
+        Input is a temporary directory. Expected PermissionErrors and
+        recorded paths detect cleanup masking the original exception
+        or preventing cleanup of subsequent directories.
+        """
+        attempted.append(path)
+        if cleanup_failure == "all" or len(attempted) == 1:
+            failed.append(path)
+            raise PermissionError("secondary cleanup failure")
+        original_cleanup(path)
+
+    with (
+        caplog.at_level(logging.WARNING, logger=event_load.__name__),
+        patch.object(pl.DataFrame, "write_parquet", fail_write),
+        patch.object(pl, "read_parquet", fail_validation),
+        patch.object(Path, "replace", fail_publication),
+        patch.object(event_load, "rmtree", fail_cleanup),
+    ):
+        with pytest.raises(type(primary_error)) as caught:
+            event_load.load_events(replacement_events, **kwargs)
+
+    assert caught.value is primary_error
+    assert len(attempted) == 3
+    assert len(failed) == (3 if cleanup_failure == "all" else 1)
+    assert all(path.exists() == (path in failed) for path in attempted)
+    assert len(caught.value.__notes__) == len(failed)
+    for path in failed:
+        assert any(str(path) in note for note in caught.value.__notes__)
+        assert str(path) in caplog.text
+    current = {
+        path: path.read_bytes() for path in tmp_path.rglob("*.parquet")
+        if not any(part.startswith(".event-output-") for part in path.parts)
+    }
+    assert current == snapshots
+
+
+@pytest.mark.parametrize("existing_outputs", [True])
+@pytest.mark.parametrize("directory_remains", [False, True])
+def test_missing_path_cleanup_warns_only_when_the_directory_remains(
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+    caplog: pytest.LogCaptureFixture,
+    directory_remains: bool,
+) -> None:
+    """Distinguish already removed directories from incomplete cleanup.
+
+    Behavior:
+        Ignore missing-directory errors only if no directory remains.
+
+    Input:
+        A two-match replacement batch. The first cleanup raises
+        FileNotFoundError with its directory already deleted or with
+        the directory still present, as when a nested file disappears.
+
+    Expected:
+        Return three published paths and attempt all three cleanups.
+        Warn with the first directory's path only if it remains.
+        Successfully removed directories produce no warning.
+
+    Guards against:
+        False warnings for completed cleanup or silently retaining
+        directories after a missing child interrupts removal.
+    """
+    kwargs, _ = publication_state
+    original_cleanup = event_load.rmtree
+    attempted: list[Path] = []
+
+    def missing_path(path: Path) -> None:
+        """Simulate a missing path with or without leftover directory.
+
+        Input is a temporary directory. Fail its first cleanup after
+        optionally deleting it; clean other paths normally. This exposes
+        whether warning behavior reflects actual remaining artifacts.
+        """
+        attempted.append(path)
+        if len(attempted) == 1:
+            if not directory_remains:
+                original_cleanup(path)
+            raise FileNotFoundError("simulated missing cleanup path")
+        original_cleanup(path)
+
+    with (
+        caplog.at_level(logging.WARNING, logger=event_load.__name__),
+        patch.object(event_load, "rmtree", missing_path),
+    ):
+        paths = event_load.load_events(replacement_events, **kwargs)
+
+    assert len(paths) == 3
+    assert all(path.is_file() for path in paths)
+    assert len(attempted) == 3
+    assert attempted[0].exists() == directory_remains
+    assert all(not path.exists() for path in attempted[1:])
+    warnings = [
+        record for record in caplog.records
+        if record.name == event_load.__name__
+    ]
+    assert len(warnings) == int(directory_remains)
+    if directory_remains:
+        assert str(attempted[0]) in warnings[0].getMessage()
 
 
 def test_load_events_partitions_batch_and_updates_lookup_once(

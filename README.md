@@ -195,6 +195,10 @@ success or successful rollback. If restoration itself fails, recovery copies
 are retained and their locations are attached to the error. Each replacement
 is atomic, but the full batch is not a transaction for process crashes or
 concurrent readers and writers.
+Temporary-directory cleanup attempts every directory. Cleanup failures log
+the leftover paths without failing an already published batch. If a write
+or publication error is active, cleanup failures are attached as notes to
+that original error.
 
 ### 2. Reproduce the model dataframe
 

@@ -1,5 +1,6 @@
 """Load Gradient Sports event data."""
 
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 from shutil import copy2, rmtree
@@ -11,6 +12,8 @@ from tempoctrl.gradient_sports.players import (
     PLAYER_LOOKUP_KEYS,
     PLAYER_LOOKUP_SCHEMA,
 )
+
+logger = logging.getLogger(__name__)
 
 EVENTS_OUTPUT_DIRECTORY = Path("data/processed/gradient_sports/events")
 MATCH_POSSESSION_LOOKUP_PATH = Path(
@@ -156,6 +159,9 @@ def _write_event_outputs(
     copies beside staged files and atomically replace each destination.
     Restore published files if replacement raises, removing new files
     that had no predecessor. Retain backups if restoration itself fails.
+    Attempt every cleanup and log failures with their directory paths.
+    Cleanup errors do not fail a successful publication or replace an
+    active error; attach them as notes to that error instead.
 
     Each staging directory shares its destination's filesystem. This
     supports rollback after handled errors, not a transaction across
@@ -169,6 +175,7 @@ def _write_event_outputs(
     prepared: list[tuple[Path, Path, Path | None]] = []
     published: list[tuple[Path, Path | None]] = []
     keep_backups = False
+    operation_error: BaseException | None = None
     try:
         for target, frame in outputs:
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -206,10 +213,27 @@ def _write_event_outputs(
                         f"Recovery copy: {backup}"
                     )
             raise
+    except BaseException as error:
+        operation_error = error
+        raise
     finally:
         if not keep_backups:
             for temporary_dir in temporary_dirs:
-                rmtree(temporary_dir)
+                try:
+                    rmtree(temporary_dir)
+                except OSError as cleanup_error:
+                    if (
+                        isinstance(cleanup_error, FileNotFoundError)
+                        and not temporary_dir.exists()
+                    ):
+                        continue
+                    message = (
+                        "Could not clean temporary event output directory "
+                        f"{temporary_dir}: {cleanup_error}"
+                    )
+                    if operation_error is not None:
+                        operation_error.add_note(message)
+                    logger.warning("%s", message)
 
 
 def write_match_possession_lookup(
