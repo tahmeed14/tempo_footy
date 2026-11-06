@@ -1,6 +1,7 @@
 """Test provider-specific possession features."""
 
 import polars as pl
+import pytest
 from polars.testing import assert_frame_equal, assert_series_equal
 
 from tempoctrl.gradient_sports.event_transform import (
@@ -8,6 +9,66 @@ from tempoctrl.gradient_sports.event_transform import (
     create_team_possession_flag,
     create_team_possession_id,
 )
+
+
+@pytest.mark.parametrize(
+    ("setpiece_label", "starts_possession"),
+    [
+        ("Corner", True),
+        ("Drop Kick", True),
+        ("Free Kick", True),
+        ("Goal Kick", True),
+        ("Kickoff", True),
+        ("Penalty", True),
+        ("Throw In", True),
+        ("Open Play", False),
+        ("N/A", False),
+        ("UNKNOWN", False),
+        (None, False),
+    ],
+)
+def test_team_possession_flags_recognize_reclassified_setpieces(
+    setpiece_label: str | None,
+    starts_possession: bool,
+) -> None:
+    """Recognize dead-ball labels after set-piece reclassification.
+
+    Behavior:
+        Start a possession for each dead-ball label without relying on
+        team changes, kickoff event types, or a preceding OUT.
+
+    Input:
+        Three PASS rows for one team. Open Play surrounds a candidate
+        set-piece label, including unknown, N/A, and null candidates.
+
+    Expected:
+        The first row starts a possession. Only the seven dead-ball
+        candidates start another; the final Open Play row never does.
+        All source columns, rows, and order remain unchanged, and the
+        added flag has Boolean dtype with no nulls.
+
+    Guards against:
+        Comparing readable labels against raw provider codes or treating
+        Open Play, missing, and unknown labels as dead-ball restarts.
+    """
+    events = pl.DataFrame(
+        {
+            "gameid": [101, 101, 101],
+            "event_number": [1, 2, 3],
+            "ge_teamid": [1, 1, 1],
+            "ge_gameeventtype": ["PASS", "PASS", "PASS"],
+            "ge_setpiecetype": ["Open Play", setpiece_label, "Open Play"],
+        }
+    )
+    expected = events.with_columns(
+        pl.Series(
+            "team_possession_start",
+            [True, starts_possession, False],
+            dtype=pl.Boolean,
+        )
+    )
+
+    assert_frame_equal(create_team_possession_flag(events), expected)
 
 
 def test_team_possession_flags_are_scoped_to_each_match() -> None:

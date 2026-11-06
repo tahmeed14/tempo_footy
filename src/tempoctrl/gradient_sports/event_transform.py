@@ -39,16 +39,16 @@ POSSESSION_EVENTS_COLUMNS = (
     "passOutcomeType",
 )
 
-# For ge_setpiecetype
+# Reclassified ge_setpiecetype labels used by possession detection.
 DEAD_BALL_SET_PIECE_TYPES = (
-    "C",  # corner
-    "D",  # drop ball
-    "F",  # free kick
-    "G",  # goal kick
-    "K",  # kickoff
-    "P",  # open play
-    "T",
-)  # throw in
+    "Corner",
+    "Drop Kick",
+    "Free Kick",
+    "Goal Kick",
+    "Kickoff",
+    "Penalty",
+    "Throw In",
+)
 
 # For ge_gameeventtype
 PAUSE_EVENTS = ("SUB", "ON", "OFF", "OUT", "END")
@@ -365,6 +365,8 @@ def create_team_possession_flag(df_in: pl.DataFrame) -> pl.DataFrame:
     change, dead-ball set piece, kickoff, or first non-pause event after
     an ``OUT`` starts a possession. Pause rows remain in the result but
     are never flagged because they have no possession of their own.
+    Expect set-piece labels from ``rename_classes_setpieces``, such as
+    ``Free Kick``, rather than raw provider codes.
 
     Args:
         df_in: Event data containing ``ge_teamid``, ``gameid``,

@@ -141,6 +141,89 @@ def _raw_match_events(
     )
 
 
+@pytest.mark.parametrize(
+    ("setpiece_code", "setpiece_label"),
+    [
+        ("C", "Corner"),
+        ("D", "Drop Kick"),
+        ("F", "Free Kick"),
+        ("G", "Goal Kick"),
+        ("K", "Kickoff"),
+        ("P", "Penalty"),
+        ("T", "Throw In"),
+    ],
+)
+def test_event_pipeline_starts_possessions_for_reclassified_setpieces(
+    tmp_path: Path,
+    setpiece_code: str,
+    setpiece_label: str,
+) -> None:
+    """Keep set-piece restarts through the real event processing chain.
+
+    Starting datasets:
+        Two three-row staged matches reuse team and player IDs. Each
+        contains a kickoff, a same-team dead-ball restart, and an
+        open-play continuation without an intervening OUT.
+
+    Expected:
+        Scanning, transformation, features, and cleanup retain all six
+        rows and 31 output columns, with no joins or unmatched records.
+        Each match has flags True, True, False and possession suffixes
+        1, 2, 2 for both team and player IDs. The restart retains its
+        readable label. Batch processing exactly equals separate runs.
+
+    Guards against:
+        Pipeline reclassification hiding raw set-piece codes from the
+        possession flag, or one match affecting another's identifiers.
+    """
+    paths = []
+    for game_id in (101, 202):
+        source = _raw_match_events(game_id, False).head(3)
+        source = source.with_row_index("event_number", offset=1)
+        source = source.with_columns(
+            pl.col("gameEvents").struct.with_fields(
+                pl.when(pl.col("event_number") == 2)
+                .then(pl.lit(setpiece_code))
+                .otherwise(pl.col("gameEvents").struct.field("setpieceType"))
+                .alias("setpieceType")
+            )
+        ).drop("event_number")
+        path = tmp_path / f"{game_id}.parquet"
+        source.write_parquet(path)
+        paths.append(path)
+
+    batch = (
+        scan_events(paths).collect()
+        .pipe(transform_events).pipe(features_events).pipe(cleanup_events)
+    )
+    separate = pl.concat(
+        [
+            scan_events(path).collect()
+            .pipe(transform_events).pipe(features_events).pipe(cleanup_events)
+            for path in paths
+        ]
+    )
+    assert_frame_equal(batch, separate)
+    assert batch.shape == (6, 31)
+    for game_id in (101, 202):
+        match = batch.filter(pl.col("game_id") == game_id)
+        assert match["event_number"].to_list() == [1, 2, 3]
+        assert match["setpiecetype"].to_list() == [
+            "Kickoff", setpiece_label, "Open Play"
+        ]
+        assert match["team_possession_start"].to_list() == [True, True, False]
+        assert match["match_team_possession_id"].to_list() == [
+            f"{game_id}_Shared_1",
+            f"{game_id}_Shared_2",
+            f"{game_id}_Shared_2",
+        ]
+        assert match["match_team_player_possession_id"].to_list() == [
+            f"{game_id}_Shared_11_1",
+            f"{game_id}_Shared_11_2",
+            f"{game_id}_Shared_11_2",
+        ]
+
+
 @pytest.mark.parametrize("interleaved", [False, True])
 @pytest.mark.parametrize("reverse_matches", [False, True])
 @pytest.mark.parametrize("missing_challenge_player", [False, True])
