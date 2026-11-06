@@ -5,12 +5,18 @@ data/
 *__pycache__*
 *.py[cod]
 
-notebooks/
+notebooks/*
+!notebooks/research_investigations/
+notebooks/research_investigations/*
+!notebooks/research_investigations/ball_interpolation_model_comparison.py
+!notebooks/research_investigations/ball_interpolation_model_comparison_plan.md
+!notebooks/research_investigations/ball_interpolation_development_findings.md
 
 .DS_Store
 # Environment
 .venv/
 env/
+AGENTS.md
 
 .pytest_cache/
 
