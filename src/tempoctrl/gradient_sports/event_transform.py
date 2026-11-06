@@ -615,10 +615,9 @@ def remove_event_prefixes(df_in: pl.DataFrame) -> pl.DataFrame:
 
 
 def organize_event_columns(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Filter valid possessions and arrange final event columns."""
+    """Finalize event column arrangement."""
     return (
         df_in
-        # .filter(pl.col("match_team_possession_id").is_not_null())
         .select(
             *FINALIZE_ORDER,
             pl.exclude(*FINALIZE_ORDER, *FINALIZE_EXCLUDE),
