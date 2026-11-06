@@ -187,6 +187,14 @@ and previous stage versions are not retained.
 
 Processed event files are regenerated for selected matches; unrelated event
 files and possession lookup rows are preserved.
+All event files and the updated lookup are written to temporary locations
+and checked against their source data before publication. Match files are
+replaced first and the shared lookup last. Handled replacement failures
+restore previous outputs; temporary files and backups are cleaned after
+success or successful rollback. If restoration itself fails, recovery copies
+are retained and their locations are attached to the error. Each replacement
+is atomic, but the full batch is not a transaction for process crashes or
+concurrent readers and writers.
 
 ### 2. Reproduce the model dataframe
 

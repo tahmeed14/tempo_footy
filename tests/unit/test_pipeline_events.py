@@ -351,8 +351,8 @@ def test_event_pipeline_outputs_are_ready_for_downstream_joins(
         ) as cleanup,
         patch.object(
             event_load,
-            "write_match_possession_lookup",
-            wraps=event_load.write_match_possession_lookup,
+            "_build_match_possession_lookup",
+            wraps=event_load._build_match_possession_lookup,
         ) as lookup_writer,
     ):
         output_paths = pipeline_events.run_pipeline(selection)

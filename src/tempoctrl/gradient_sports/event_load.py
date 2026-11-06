@@ -1,6 +1,9 @@
 """Load Gradient Sports event data."""
 
+from collections.abc import Sequence
 from pathlib import Path
+from shutil import copy2, rmtree
+from tempfile import mkdtemp
 
 import polars as pl
 
@@ -81,18 +84,12 @@ def add_player_metadata(
     )
 
 
-def write_match_possession_lookup(
+def _build_match_possession_lookup(
     df_in: pl.DataFrame,
-    output_path: str | Path = MATCH_POSSESSION_LOOKUP_PATH,
-    player_lookup_path: str | Path = PLAYER_GAME_LOOKUP_PATH,
-) -> Path:
-    """Replace selected matches while preserving other lookup rows.
-
-    Enrich incoming possessions once and retain all columns on existing
-    rows from other matches. A selected match without any identified
-    possessions removes its old lookup rows.
-    """
-    output_path = Path(output_path)
+    output_path: Path,
+    player_lookup_path: str | Path,
+) -> pl.DataFrame:
+    """Prepare an enriched lookup without changing existing files."""
     game_ids = df_in.get_column("game_id").drop_nulls().unique().to_list()
     df_lookup = (
         df_in.select(MATCH_POSSESSION_LOOKUP_COLUMNS)
@@ -111,11 +108,93 @@ def write_match_possession_lookup(
             how="diagonal_relaxed",
         )
 
-    df_lookup = df_lookup.sort(
+    return df_lookup.sort(
         ("game_id", "match_team_player_possession_id")
     )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df_lookup.write_parquet(output_path, compression="zstd")
+
+
+def _write_event_outputs(
+    outputs: Sequence[tuple[Path, pl.DataFrame]],
+) -> None:
+    """Prepare Parquets before publishing them in the supplied order.
+
+    Validate each temporary file against its source frame. Keep backup
+    copies beside staged files and atomically replace each destination.
+    Restore published files if replacement raises, removing new files
+    that had no predecessor. Retain backups if restoration itself fails.
+
+    Each staging directory shares its destination's filesystem. This
+    supports rollback after handled errors, not a transaction across
+    files during a process crash or concurrent reads and writes.
+    """
+    targets = [path.resolve() for path, _ in outputs]
+    if len(set(targets)) != len(targets):
+        raise ValueError("Event output paths must be distinct")
+
+    temporary_dirs: list[Path] = []
+    prepared: list[tuple[Path, Path, Path | None]] = []
+    published: list[tuple[Path, Path | None]] = []
+    keep_backups = False
+    try:
+        for target, frame in outputs:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary_dir = Path(
+                mkdtemp(dir=target.parent, prefix=".event-output-")
+            )
+            temporary_dirs.append(temporary_dir)
+            staged = temporary_dir / target.name
+            frame.write_parquet(staged, compression="zstd")
+            restored = pl.read_parquet(staged)
+            if restored.schema != frame.schema or not restored.equals(frame):
+                raise ValueError(f"Event output validation failed: {target}")
+            backup = None
+            if target.exists():
+                backup = temporary_dir / "backups" / target.name
+                backup.parent.mkdir()
+                copy2(target, backup)
+            prepared.append((target, staged, backup))
+
+        try:
+            for target, staged, backup in prepared:
+                staged.replace(target)
+                published.append((target, backup))
+        except BaseException as error:
+            for target, backup in reversed(published):
+                try:
+                    if backup is None:
+                        target.unlink(missing_ok=True)
+                    else:
+                        backup.replace(target)
+                except OSError as recovery_error:
+                    keep_backups = True
+                    error.add_note(
+                        f"Could not restore {target}: {recovery_error}. "
+                        f"Recovery copy: {backup}"
+                    )
+            raise
+    finally:
+        if not keep_backups:
+            for temporary_dir in temporary_dirs:
+                rmtree(temporary_dir)
+
+
+def write_match_possession_lookup(
+    df_in: pl.DataFrame,
+    output_path: str | Path = MATCH_POSSESSION_LOOKUP_PATH,
+    player_lookup_path: str | Path = PLAYER_GAME_LOOKUP_PATH,
+) -> Path:
+    """Replace selected matches while preserving other lookup rows.
+
+    Enrich incoming possessions once and retain all columns on existing
+    rows from other matches. A selected match without any identified
+    possessions removes its old lookup rows. Write and validate a
+    temporary Parquet before atomically replacing the existing lookup.
+    """
+    output_path = Path(output_path)
+    df_lookup = _build_match_possession_lookup(
+        df_in, output_path, player_lookup_path
+    )
+    _write_event_outputs([(output_path, df_lookup)])
     return output_path
 
 
@@ -130,6 +209,9 @@ def load_events(
 
     Preserve each match's source row order, columns, and dtypes. Replace
     event files only for selected matches and retain unrelated files.
+    Prepare and validate all Parquets before publishing match files,
+    then the shared lookup. Handled replacement failures restore prior
+    outputs. Publication is not crash-atomic across multiple files.
 
     Args:
         df_in: Processed events for one or more matches.
@@ -154,16 +236,14 @@ def load_events(
         "game_id", as_dict=True, maintain_order=True
     )
     output_directory = Path(output_dir)
-    output_directory.mkdir(parents=True, exist_ok=True)
-    lookup_path = write_match_possession_lookup(
-        df_in,
-        output_path=possession_lookup_path,
-        player_lookup_path=player_lookup_path,
+    lookup_path = Path(possession_lookup_path)
+    df_lookup = _build_match_possession_lookup(
+        df_in, lookup_path, player_lookup_path
     )
-    output_paths = []
-    for (match_id,), df_match in sorted(match_frames.items()):
-        output_path = output_directory / f"{match_id}.parquet"
-        df_match.write_parquet(output_path, compression="zstd")
-        output_paths.append(output_path)
+    outputs = [
+        (output_directory / f"{match_id}.parquet", df_match)
+        for (match_id,), df_match in sorted(match_frames.items())
+    ]
+    _write_event_outputs([*outputs, (lookup_path, df_lookup)])
 
-    return (*output_paths, lookup_path)
+    return (*(path for path, _ in outputs), lookup_path)

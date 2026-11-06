@@ -155,8 +155,8 @@ def test_load_events_partitions_batch_and_updates_lookup_once(
     with (
         patch.object(
             event_load,
-            "write_match_possession_lookup",
-            wraps=event_load.write_match_possession_lookup,
+            "_build_match_possession_lookup",
+            wraps=event_load._build_match_possession_lookup,
         ) as writer,
         patch.object(
             event_load,
@@ -490,3 +490,480 @@ def test_load_events_rejects_empty_or_unidentified_batches(
 
     assert not output_dir.exists()
     assert not lookup_path.exists()
+
+
+@pytest.fixture
+def replacement_events(events: pl.DataFrame) -> pl.DataFrame:
+    """Provide distinguishable replacements for two selected matches.
+
+    Behavior:
+        Change possession IDs and event markers without row loss.
+
+    Input:
+        Five interleaved events from matches 101 and 202, including
+        repeated possessions and null possession rows.
+
+    Expected:
+        Non-null IDs and all markers gain a _new suffix. Nulls and all
+        other values remain unchanged.
+
+    Guards against:
+        Failure tests passing because replacement bytes equal old data.
+    """
+    return events.with_columns(
+        (pl.col("match_team_player_possession_id") + "_new"),
+        (pl.col("marker") + "_new"),
+    )
+
+
+@pytest.fixture
+def publication_state(
+    tmp_path: Path,
+    events: pl.DataFrame,
+    existing_lookup: pl.DataFrame,
+    existing_outputs: bool,
+) -> tuple[dict[str, Path], dict[Path, bytes]]:
+    """Seed publication paths and capture their original bytes.
+
+    Behavior:
+        Isolate all writes and retain an unrelated match in every case.
+
+    Input:
+        Five selected event rows, an existing three-match lookup, and
+        whether selected files and the shared lookup already exist.
+
+    Expected:
+        A keyword-argument mapping for load_events and byte snapshots
+        of all original files. Match 303's event always exists; its
+        enriched lookup row exists only with preexisting outputs.
+
+    Guards against:
+        Tests missing rollback of new files or unrelated-data loss.
+    """
+    kwargs = {
+        "output_dir": tmp_path / "events",
+        "possession_lookup_path": tmp_path / "lookup.parquet",
+        "player_lookup_path": tmp_path / "absent.parquet",
+    }
+    kwargs["output_dir"].mkdir()
+    pl.DataFrame({"marker": ["keep"]}).write_parquet(
+        kwargs["output_dir"] / "303.parquet"
+    )
+    if existing_outputs:
+        existing_lookup.write_parquet(kwargs["possession_lookup_path"])
+        event_load.load_events(events, **kwargs)
+    snapshots = {
+        path: path.read_bytes() for path in tmp_path.rglob("*.parquet")
+    }
+    return kwargs, snapshots
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+@pytest.mark.parametrize(
+    "failed_name", ["101.parquet", "202.parquet", "lookup.parquet"]
+)
+def test_event_write_failure_preserves_all_outputs_and_allows_retry(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+    failed_name: str,
+) -> None:
+    """Leave every public output unchanged after an interrupted write.
+
+    Starting datasets:
+        Five replacement events from two matches, an unrelated match,
+        and either existing selected files and lookup or no prior batch.
+        The first event, second event, or lookup writer writes partial
+        bytes and raises an OSError.
+
+    Expected:
+        No public files change or appear, and staging directories are
+        removed. A retry writes complete three-row and two-row event
+        files, including null IDs; the lookup has two new possessions
+        plus the unrelated possession when present. No metadata joins
+        occur because the optional metadata file is absent.
+
+    Guards against:
+        Publishing a lookup or earlier matches before all writes finish,
+        corrupting existing files, blocking retries, or leaking copies.
+    """
+    kwargs, snapshots = publication_state
+    original_write = pl.DataFrame.write_parquet
+
+    def interrupted_write(
+        frame: pl.DataFrame,
+        file: str | Path,
+        **write_kwargs: object,
+    ) -> None:
+        """Simulate partial bytes followed by a disk-write failure.
+
+        Input is a pending frame and path. Only the selected basename
+        fails; other writes use Polars. The expected partial file and
+        OSError detect public overwrites or early publication.
+        """
+        path = Path(file)
+        if path.name == failed_name:
+            path.write_bytes(b"partial parquet")
+            raise OSError("simulated write failure")
+        original_write(frame, file, **write_kwargs)
+
+    with patch.object(pl.DataFrame, "write_parquet", interrupted_write):
+        with pytest.raises(OSError, match="simulated write failure"):
+            event_load.load_events(replacement_events, **kwargs)
+
+    current = {p: p.read_bytes() for p in tmp_path.rglob("*.parquet")}
+    assert current == snapshots
+    assert not list(tmp_path.rglob(".event-output-*"))
+    paths = event_load.load_events(replacement_events, **kwargs)
+    for path in paths[:-1]:
+        assert_frame_equal(
+            pl.read_parquet(path),
+            replacement_events.filter(pl.col("game_id") == int(path.stem)),
+        )
+    lookup = pl.read_parquet(paths[-1])
+    assert lookup.filter(pl.col("game_id").is_in([101, 202]))[
+        "match_team_player_possession_id"
+    ].to_list() == ["101_p1_new", "202_p2_new"]
+    assert not list(tmp_path.rglob(".event-output-*"))
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+@pytest.mark.parametrize("corruption", ["truncated", "schema", "values"])
+def test_invalid_pending_parquet_prevents_all_publication(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+    corruption: str,
+) -> None:
+    """Validate pending contents before replacing any public outputs.
+
+    Behavior:
+        Reject unreadable files and readable files with wrong data.
+
+    Input:
+        A two-match replacement batch. Its second pending match file
+        is truncated, loses marker, or replaces every marker with wrong.
+
+    Expected:
+        Raise a validation error while retaining every original file
+        byte for byte, creating no new public files or staging residue.
+
+    Guards against:
+        Trusting writer success without validating Parquet schema and
+        values, or publishing a match before validation finishes.
+    """
+    kwargs, snapshots = publication_state
+    original_write = pl.DataFrame.write_parquet
+
+    def corrupt_write(
+        frame: pl.DataFrame,
+        file: str | Path,
+        **write_kwargs: object,
+    ) -> None:
+        """Write corrupt data while reporting a successful write.
+
+        Input is a pending frame and path; only match 202 is altered.
+        Expected unreadable bytes or mismatching schema/values expose
+        missing validation without touching unrelated writes.
+        """
+        path = Path(file)
+        if path.name == "202.parquet":
+            if corruption == "truncated":
+                path.write_bytes(b"truncated parquet")
+                return
+            if corruption == "schema":
+                frame = frame.drop("marker")
+            else:
+                frame = frame.with_columns(pl.lit("wrong").alias("marker"))
+        original_write(frame, file, **write_kwargs)
+
+    with patch.object(pl.DataFrame, "write_parquet", corrupt_write):
+        with pytest.raises((ValueError, pl.exceptions.PolarsError)):
+            event_load.load_events(replacement_events, **kwargs)
+
+    current = {p: p.read_bytes() for p in tmp_path.rglob("*.parquet")}
+    assert current == snapshots
+    assert not list(tmp_path.rglob(".event-output-*"))
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+@pytest.mark.parametrize(
+    "failed_name", ["101.parquet", "202.parquet", "lookup.parquet"]
+)
+def test_publication_failure_rolls_back_the_whole_event_batch(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+    failed_name: str,
+) -> None:
+    """Restore prior files after failure during ordered publication.
+
+    Starting datasets:
+        Two selected matches, an unrelated match, and optional prior
+        event files and lookup. All three pending Parquets are valid,
+        but atomic replacement fails for one selected destination.
+
+    Expected:
+        Propagate OSError and restore all original bytes. Remove any
+        newly published files that had no predecessor. Leave unrelated
+        files untouched and no staging directories behind. Ordinary
+        retry succeeds, retaining every event and null possession row.
+        No joins occur because player metadata is absent.
+
+    Guards against:
+        Mixed old/new batches after a replacement failure, deleting
+        prior data, leaving new files behind, or cleanup errors.
+    """
+    kwargs, snapshots = publication_state
+    original_replace = Path.replace
+
+    def failed_replace(source: Path, target: str | Path) -> Path:
+        """Fail one pending publication, allowing backup restoration.
+
+        Input is a source and destination. A pending file with the
+        selected destination name raises OSError; backups replace
+        normally. This isolates publication failure from write failure.
+        """
+        if (
+            source.parent.name.startswith(".event-output-")
+            and Path(target).name == failed_name
+        ):
+            raise OSError("simulated publication failure")
+        return original_replace(source, target)
+
+    with patch.object(Path, "replace", failed_replace):
+        with pytest.raises(OSError, match="simulated publication failure"):
+            event_load.load_events(replacement_events, **kwargs)
+
+    current = {p: p.read_bytes() for p in tmp_path.rglob("*.parquet")}
+    assert current == snapshots
+    assert not list(tmp_path.rglob(".event-output-*"))
+    event_load.load_events(replacement_events, **kwargs)
+    assert not list(tmp_path.rglob(".event-output-*"))
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+def test_lookup_publishes_last_after_every_output_is_prepared(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+) -> None:
+    """Publish the lookup only after complete match files are prepared.
+
+    Behavior:
+        Complete every pending write before publishing any output.
+
+    Input:
+        A two-match replacement batch with optional previous outputs
+        and an unrelated match 303.
+
+    Expected:
+        All three writes finish before the first atomic replacement.
+        Publication order is match 101, match 202, then the lookup.
+        Returned paths match that order; no temporary copies remain.
+
+    Guards against:
+        Early lookup publication, per-match prepare/publish loops, or
+        history and backup files accumulating after successful runs.
+    """
+    kwargs, _ = publication_state
+    original_replace = Path.replace
+    published: list[Path] = []
+
+    def inspect_replace(source: Path, target: str | Path) -> Path:
+        """Check preparation is complete at each public replacement.
+
+        Input is a pending file and public path. Expect three completed
+        writes and record destination order, catching early publication.
+        """
+        assert writer.call_count == 3
+        published.append(Path(target))
+        return original_replace(source, target)
+
+    with (
+        patch.object(
+            pl.DataFrame, "write_parquet", autospec=True,
+            side_effect=pl.DataFrame.write_parquet,
+        ) as writer,
+        patch.object(Path, "replace", inspect_replace),
+    ):
+        paths = event_load.load_events(replacement_events, **kwargs)
+
+    assert published == [
+        kwargs["output_dir"] / "101.parquet",
+        kwargs["output_dir"] / "202.parquet",
+        kwargs["possession_lookup_path"],
+    ]
+    assert paths == tuple(published)
+    assert not list(tmp_path.rglob(".event-output-*"))
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+def test_standalone_lookup_write_is_safe_and_retryable(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+) -> None:
+    """Preserve a standalone lookup after failure and allow retry.
+
+    Behavior:
+        Apply safe temporary writes to the public standalone writer too.
+
+    Input:
+        Two selected matches, optional existing lookup metadata for an
+        unrelated match, and a writer that fails after partial bytes.
+
+    Expected:
+        Retain all original files and remove partial staging data. Retry
+        without the injected failure writes two new possessions, keeping
+        match 303 when present. Event files stay unchanged throughout.
+
+    Guards against:
+        Fixing only the pipeline path, corrupting the standalone lookup,
+        losing unrelated metadata, or blocking the next ordinary retry.
+    """
+    kwargs, snapshots = publication_state
+
+    def interrupted_write(
+        frame: pl.DataFrame,
+        file: str | Path,
+        **write_kwargs: object,
+    ) -> None:
+        """Write partial bytes and fail the standalone pending lookup.
+
+        Input is a pending lookup frame and path. Expect OSError after
+        partial bytes, catching direct overwrites of the public lookup.
+        """
+        Path(file).write_bytes(b"partial lookup")
+        raise OSError("simulated lookup failure")
+
+    with patch.object(pl.DataFrame, "write_parquet", interrupted_write):
+        with pytest.raises(OSError, match="simulated lookup failure"):
+            event_load.write_match_possession_lookup(
+                replacement_events,
+                output_path=kwargs["possession_lookup_path"],
+                player_lookup_path=kwargs["player_lookup_path"],
+            )
+
+    current = {p: p.read_bytes() for p in tmp_path.rglob("*.parquet")}
+    assert current == snapshots
+    assert not list(tmp_path.rglob(".event-output-*"))
+    path = event_load.write_match_possession_lookup(
+        replacement_events,
+        output_path=kwargs["possession_lookup_path"],
+        player_lookup_path=kwargs["player_lookup_path"],
+    )
+    assert path == kwargs["possession_lookup_path"]
+    lookup = pl.read_parquet(path)
+    assert lookup.filter(pl.col("game_id").is_in([101, 202]))[
+        "match_team_player_possession_id"
+    ].to_list() == ["101_p1_new", "202_p2_new"]
+    for original, data in snapshots.items():
+        if original != path:
+            assert original.read_bytes() == data
+    if path in snapshots:
+        assert lookup.filter(pl.col("game_id") == 303)[
+            "player_possession_group"
+        ].item() == "Winger"
+    assert not list(tmp_path.rglob(".event-output-*"))
+
+
+@pytest.mark.parametrize("existing_outputs", [True])
+def test_failed_rollback_retains_recovery_copies_and_reports_location(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+) -> None:
+    """Retain old bytes for recovery when rollback cannot restore data.
+
+    Behavior:
+        Keep backup directories instead of deleting the last old copy.
+
+    Input:
+        Existing event and lookup files. Publishing the new lookup
+        fails, then restoring match 101's previous file also fails.
+
+    Expected:
+        Re-raise the publication error with a note identifying the
+        failed restoration and backup path. The old match-101 bytes
+        survive in that backup. Match 202, the shared lookup, and the
+        unrelated match retain their original bytes.
+
+    Guards against:
+        Cleanup destroying recovery copies after a rollback failure,
+        masking the original error, or stopping other restorations.
+    """
+    kwargs, snapshots = publication_state
+    original_replace = Path.replace
+
+    def fail_publication_and_restore(
+        source: Path,
+        target: str | Path,
+    ) -> Path:
+        """Fail lookup publication and only match 101's restoration.
+
+        Input is a staged or backup path and destination. Expected
+        OSErrors expose backup deletion and incomplete rollback.
+        Other replacements use their normal filesystem operation.
+        """
+        if (
+            source.parent.name.startswith(".event-output-")
+            and Path(target).name == "lookup.parquet"
+        ):
+            raise OSError("publication failed")
+        if source.parent.name == "backups" and source.name == "101.parquet":
+            raise OSError("restoration failed")
+        return original_replace(source, target)
+
+    with patch.object(Path, "replace", fail_publication_and_restore):
+        with pytest.raises(OSError, match="publication failed") as caught:
+            event_load.load_events(replacement_events, **kwargs)
+
+    backups = [
+        path for path in tmp_path.rglob("101.parquet")
+        if path.parent.name == "backups"
+    ]
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == snapshots[
+        kwargs["output_dir"] / "101.parquet"
+    ]
+    assert any(str(backups[0]) in note for note in caught.value.__notes__)
+    for path, original in snapshots.items():
+        if path.name != "101.parquet":
+            assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("existing_outputs", [False, True])
+def test_colliding_event_and_lookup_paths_are_rejected_before_writing(
+    tmp_path: Path,
+    replacement_events: pl.DataFrame,
+    publication_state: tuple[dict[str, Path], dict[Path, bytes]],
+) -> None:
+    """Reject configuring the lookup to overwrite a selected event file.
+
+    Behavior:
+        Require distinct resolved destination paths before publication.
+
+    Input:
+        A two-match batch whose custom lookup path equals match 101's
+        output path, with or without existing outputs.
+
+    Expected:
+        ValueError and no new public files, changed bytes, or temporary
+        directories. All original files remain available.
+
+    Guards against:
+        Publishing a lookup over a match file or ambiguous backups.
+    """
+    kwargs, snapshots = publication_state
+    kwargs = {
+        **kwargs,
+        "possession_lookup_path": kwargs["output_dir"] / "101.parquet",
+    }
+
+    with pytest.raises(ValueError, match="paths must be distinct"):
+        event_load.load_events(replacement_events, **kwargs)
+
+    current = {p: p.read_bytes() for p in tmp_path.rglob("*.parquet")}
+    assert current == snapshots
+    assert not list(tmp_path.rglob(".event-output-*"))
