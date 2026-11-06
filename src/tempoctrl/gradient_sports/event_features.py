@@ -126,9 +126,6 @@ def add_possession_player_features(df_in: pl.DataFrame) -> pl.DataFrame:
 
 def features_events(df_in: pl.DataFrame) -> pl.DataFrame:
     """Add all derived event features."""
-    df_out = add_game_state_features(df_in)
-    df_out = add_possession_player_features(df_out)
-
     return df_in.pipe(add_game_state_features).pipe(
         add_possession_player_features
     )
