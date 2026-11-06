@@ -489,8 +489,8 @@ def create_player_possession_id(df_in: pl.DataFrame) -> pl.DataFrame:
         df_in: Event data containing player and team-possession fields.
 
     Returns:
-        Event data with an ``individual_possession_id`` column, without
-        temporary player-possession columns.
+        Event data with an ``match_team_player_possession_id`` column, 
+        without temporary player-possession columns.
 
     """
     player_has_team_possession = (
