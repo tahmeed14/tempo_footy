@@ -7,6 +7,11 @@ from tempfile import mkdtemp
 
 import polars as pl
 
+from tempoctrl.gradient_sports.players import (
+    PLAYER_LOOKUP_KEYS,
+    PLAYER_LOOKUP_SCHEMA,
+)
+
 EVENTS_OUTPUT_DIRECTORY = Path("data/processed/gradient_sports/events")
 MATCH_POSSESSION_LOOKUP_PATH = Path(
     "data/curated/gradient_sports/possession_lookup/"
@@ -58,7 +63,14 @@ def add_player_metadata(
     df_possession_lookup: pl.DataFrame,
     player_lookup_path: str | Path = PLAYER_GAME_LOOKUP_PATH,
 ) -> pl.DataFrame:
-    """Add available player-game metadata to a possession lookup."""
+    """Normalize lookup IDs and add available player-game metadata.
+
+    Normalize incoming game, team, and player join keys to the player
+    lookup's Int64 convention, including empty and Null-typed columns.
+    Preserve null values. Invalid string IDs raise instead of silently
+    becoming null. Normalize even when optional metadata is absent.
+    """
+    df_possession_lookup = _normalize_lookup_ids(df_possession_lookup)
     player_lookup_path = Path(player_lookup_path)
     if not player_lookup_path.is_file():
         return df_possession_lookup
@@ -78,9 +90,30 @@ def add_player_metadata(
     )
     return df_possession_lookup.join(
         df_player_metadata,
-        on=("game_id", "team_id", "player_id"),
+        on=PLAYER_LOOKUP_KEYS,
         how="left",
         validate="m:1",
+    )
+
+
+def _normalize_lookup_ids(df_in: pl.DataFrame) -> pl.DataFrame:
+    """Normalize integer, String, and Null lookup keys to canonical IDs.
+
+    Reject other dtypes to avoid truncating fractional IDs or treating
+    Boolean values as numeric identifiers.
+    """
+    for column in PLAYER_LOOKUP_KEYS:
+        dtype = df_in.schema[column]
+        if dtype not in (pl.String, pl.Null) and not dtype.is_integer():
+            raise ValueError(
+                f"Unsupported lookup ID dtype for {column}: {dtype}"
+            )
+    return df_in.cast(
+        {
+            column: PLAYER_LOOKUP_SCHEMA[column]
+            for column in PLAYER_LOOKUP_KEYS
+        },
+        strict=True,
     )
 
 
@@ -90,6 +123,7 @@ def _build_match_possession_lookup(
     player_lookup_path: str | Path,
 ) -> pl.DataFrame:
     """Prepare an enriched lookup without changing existing files."""
+    df_in = _normalize_lookup_ids(df_in)
     game_ids = df_in.get_column("game_id").drop_nulls().unique().to_list()
     df_lookup = (
         df_in.select(MATCH_POSSESSION_LOOKUP_COLUMNS)
@@ -100,7 +134,7 @@ def _build_match_possession_lookup(
 
     if output_path.is_file():
         df_existing = (
-            pl.read_parquet(output_path)
+            pl.read_parquet(output_path).pipe(_normalize_lookup_ids)
             .filter(~pl.col("game_id").is_in(game_ids))
         )
         df_lookup = pl.concat(

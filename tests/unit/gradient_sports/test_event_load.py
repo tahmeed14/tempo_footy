@@ -627,6 +627,314 @@ def test_event_write_failure_preserves_all_outputs_and_allows_retry(
     assert not list(tmp_path.rglob(".event-output-*"))
 
 
+@pytest.mark.parametrize("source_dtype", [pl.String, pl.Int32, pl.Int64])
+@pytest.mark.parametrize("metadata_exists", [False, True])
+def test_player_metadata_normalizes_join_ids_without_losing_rows(
+    tmp_path: Path,
+    player_lookup: Path,
+    source_dtype: pl.DataType,
+    metadata_exists: bool,
+) -> None:
+    """Normalize numeric IDs before optional many-to-one enrichment.
+
+    Starting datasets:
+        Three possession rows identify players 11, 22, and unknown 777.
+        Their game/team/player keys are String, Int32, or Int64.
+        Optional metadata identifies the first two players and rivals.
+
+    Expected:
+        Three rows remain in source order with Int64 join keys. When
+        metadata exists, player 11 maps to Forward/Gamma and player 22
+        to Midfielder/Delta; player 777 retains null enrichment. Without
+        metadata, only the normalized input columns remain. Composite
+        IDs and markers are unchanged. The join is many-to-one.
+
+    Guards against:
+        Schema mismatch, silently unmatched numeric strings, row loss,
+        metadata mutation, or changing composite possession IDs.
+    """
+    keys = ("game_id", "team_id", "player_id")
+    canonical = pl.DataFrame(
+        {
+            "game_id": [101, 202, 101],
+            "team_id": [1, 2, 1],
+            "player_id": [11, 22, 777],
+            "match_team_player_possession_id": ["p1", "p2", "p3"],
+            "marker": [30, 10, 20],
+        }
+    )
+    incoming = canonical.cast({column: source_dtype for column in keys})
+    source_bytes = player_lookup.read_bytes()
+    metadata_path = player_lookup if metadata_exists else tmp_path / "absent"
+    expected = canonical
+    if metadata_exists:
+        expected = expected.with_columns(
+            pl.Series("opponent_id", [9, 8, None], dtype=pl.Int64),
+            pl.Series(
+                "player_possession_group", ["Forward", "Midfielder", None]
+            ),
+            pl.Series("started", [True, False, None], dtype=pl.Boolean),
+            pl.Series("opposition_teamname", ["Gamma", "Delta", None]),
+        )
+
+    result = event_load.add_player_metadata(incoming, metadata_path)
+
+    assert_frame_equal(result, expected)
+    assert player_lookup.read_bytes() == source_bytes
+
+
+@pytest.mark.parametrize("null_key", ["game_id", "team_id", "player_id"])
+@pytest.mark.parametrize("row_count", [0, 2])
+def test_player_metadata_accepts_empty_and_null_typed_join_keys(
+    player_lookup: Path,
+    null_key: str,
+    row_count: int,
+) -> None:
+    """Preserve empty and unknown identities while normalizing ID types.
+
+    Behavior:
+        Normalize a Null-typed key to nullable Int64 before joining.
+
+    Input:
+        Zero or two rows with game/team/player keys 101/1/11, except
+        one key is entirely Null dtype. Metadata contains that player.
+
+    Expected:
+        Preserve zero or two rows, with Int64 keys and String marker.
+        All four added metadata columns are null with stable Int64,
+        String, Boolean, and String dtypes; unknown IDs never match.
+
+    Guards against:
+        Empty-lookup join errors, null IDs becoming valid IDs, dropping
+        unmatched rows, or unstable output schemas.
+    """
+    values = {"game_id": 101, "team_id": 1, "player_id": 11}
+    canonical = pl.DataFrame(
+        {
+            key: pl.Series(
+                [None if key == null_key else value] * row_count,
+                dtype=pl.Int64,
+            )
+            for key, value in values.items()
+        }
+    ).with_columns(pl.Series("marker", ["keep"] * row_count, dtype=pl.String))
+    incoming = canonical.with_columns(
+        pl.Series(null_key, [None] * row_count, dtype=pl.Null)
+    )
+    expected = canonical.with_columns(
+        pl.Series("opponent_id", [None] * row_count, dtype=pl.Int64),
+        pl.Series(
+            "player_possession_group", [None] * row_count, dtype=pl.String
+        ),
+        pl.Series("started", [None] * row_count, dtype=pl.Boolean),
+        pl.Series("opposition_teamname", [None] * row_count, dtype=pl.String),
+    )
+
+    result = event_load.add_player_metadata(incoming, player_lookup)
+
+    assert_frame_equal(result, expected)
+
+
+@pytest.mark.parametrize("invalid_key", ["game_id", "team_id", "player_id"])
+@pytest.mark.parametrize("metadata_exists", [False, True])
+def test_player_metadata_rejects_malformed_ids(
+    tmp_path: Path,
+    player_lookup: Path,
+    invalid_key: str,
+    metadata_exists: bool,
+) -> None:
+    """Reject malformed IDs before they become missing matches.
+
+    Behavior:
+        Strictly normalize lookup keys even without optional metadata.
+
+    Input:
+        One row with numeric string IDs and one key replaced by bad-id.
+        The optional player lookup is present or absent.
+
+    Expected:
+        Raise InvalidOperationError before enrichment; do not silently
+        produce a null key or return the original String schema.
+
+    Guards against:
+        Silent ID coercion or inconsistent schemas without metadata.
+    """
+    incoming = pl.DataFrame(
+        {"game_id": ["101"], "team_id": ["1"], "player_id": ["11"]}
+    ).with_columns(pl.lit("bad-id").alias(invalid_key))
+    metadata_path = player_lookup if metadata_exists else tmp_path / "absent"
+
+    with pytest.raises(pl.exceptions.InvalidOperationError):
+        event_load.add_player_metadata(incoming, metadata_path)
+
+
+@pytest.mark.parametrize("existing_id_dtype", [pl.Int64, pl.String])
+def test_string_event_ids_replace_lookup_matches_with_canonical_ids(
+    tmp_path: Path,
+    events: pl.DataFrame,
+    existing_lookup: pl.DataFrame,
+    player_lookup: Path,
+    existing_id_dtype: pl.DataType,
+) -> None:
+    """Normalize selected IDs before replacing existing lookup matches.
+
+    Starting datasets:
+        Five events with String game/team/player IDs from two matches.
+        The old three-match lookup uses integer or String ID keys, and
+        the player metadata uses canonical integers.
+
+    Expected:
+        Write all three and two selected event rows without changing
+        their original String schemas. The lookup retains three rows,
+        replaces old selected possessions, and preserves match 303's
+        metadata with Int64 keys. Enrichment is many-to-one and excludes
+        null possession IDs without dropping them from event outputs.
+
+    Guards against:
+        Using String replacement IDs against integer lookup IDs,
+        retaining stale possessions, or changing event-file schemas.
+    """
+    keys = ("game_id", "team_id", "player_id")
+    incoming = events.cast({key: pl.String for key in keys})
+    lookup_path = tmp_path / "lookup.parquet"
+    existing_lookup.cast(
+        {key: existing_id_dtype for key in keys}
+    ).write_parquet(lookup_path)
+
+    paths = event_load.load_events(
+        incoming,
+        output_dir=tmp_path / "events",
+        possession_lookup_path=lookup_path,
+        player_lookup_path=player_lookup,
+    )
+
+    for path in paths[:-1]:
+        assert_frame_equal(
+            pl.read_parquet(path),
+            incoming.filter(pl.col("game_id") == path.stem),
+        )
+    lookup = pl.read_parquet(lookup_path)
+    assert lookup.height == 3
+    assert all(lookup.schema[key] == pl.Int64 for key in keys)
+    assert lookup["match_team_player_possession_id"].to_list() == [
+        "101_p1", "202_p2", "303_p3"
+    ]
+    assert_frame_equal(
+        lookup.filter(pl.col("game_id") == 303),
+        existing_lookup.filter(pl.col("game_id") == 303),
+    )
+    assert lookup["player_possession_group"].to_list() == [
+        "Forward", "Midfielder", "Winger"
+    ]
+
+
+@pytest.mark.parametrize("invalid_key", ["game_id", "team_id", "player_id"])
+@pytest.mark.parametrize("invalid_value", [1.5, True])
+def test_player_metadata_rejects_lossy_id_conversions(
+    player_lookup: Path,
+    invalid_key: str,
+    invalid_value: float | bool,
+) -> None:
+    """Reject fractional and Boolean IDs instead of inventing matches.
+
+    Behavior:
+        Require integer, String, or Null dtypes for each join key.
+
+    Input:
+        One otherwise valid 101/1/11 row with a join key replaced by
+        Float64 value 1.5 or Boolean True.
+
+    Expected:
+        Raise ValueError naming the key before casting or joining.
+
+    Guards against:
+        Truncating fractional IDs or interpreting Boolean True as ID 1.
+    """
+    incoming = pl.DataFrame(
+        {"game_id": [101], "team_id": [1], "player_id": [11]}
+    ).with_columns(pl.lit(invalid_value).alias(invalid_key))
+
+    with pytest.raises(ValueError, match=invalid_key):
+        event_load.add_player_metadata(incoming, player_lookup)
+
+
+@pytest.mark.parametrize("invalid_key", ["game_id", "team_id", "player_id"])
+def test_player_metadata_rejects_out_of_range_numeric_ids(
+    player_lookup: Path,
+    invalid_key: str,
+) -> None:
+    """Reject numeric strings exceeding the canonical integer range.
+
+    Behavior:
+        Strictly cast numeric strings without overflow or null coercion.
+
+    Input:
+        One numeric-string row with one join key set to 2**63, which is
+        one greater than the largest signed Int64 value.
+
+    Expected:
+        Raise InvalidOperationError before enrichment.
+
+    Guards against:
+        Converting out-of-range IDs to null or a different valid ID.
+    """
+    incoming = pl.DataFrame(
+        {"game_id": ["101"], "team_id": ["1"], "player_id": ["11"]}
+    ).with_columns(pl.lit("9223372036854775808").alias(invalid_key))
+
+    with pytest.raises(pl.exceptions.InvalidOperationError):
+        event_load.add_player_metadata(incoming, player_lookup)
+
+
+def test_pause_only_lookup_replacement_accepts_null_ids_with_metadata(
+    tmp_path: Path,
+    events: pl.DataFrame,
+    existing_lookup: pl.DataFrame,
+    player_lookup: Path,
+) -> None:
+    """Enrich an empty lookup without losing selected match IDs.
+
+    Starting datasets:
+        Two pause events from matches 101 and 202 have entirely Null
+        team/player ID columns. A three-match lookup and integer player
+        metadata exist.
+
+    Expected:
+        Write both events with their original schemas and null IDs.
+        Remove stale possessions for both selected matches, preserving
+        only the unrelated match-303 row and its metadata. The empty
+        enrichment join remains many-to-one without fabricating rows.
+
+    Guards against:
+        Null-dtype joins failing for pause-only matches or deriving
+        replacement match IDs after unidentified rows are removed.
+    """
+    incoming = events.filter(
+        pl.col("match_team_player_possession_id").is_null()
+    ).with_columns(
+        pl.lit(None).alias("team_id"), pl.lit(None).alias("player_id")
+    )
+    lookup_path = tmp_path / "lookup.parquet"
+    existing_lookup.write_parquet(lookup_path)
+
+    paths = event_load.load_events(
+        incoming,
+        output_dir=tmp_path / "events",
+        possession_lookup_path=lookup_path,
+        player_lookup_path=player_lookup,
+    )
+
+    for path in paths[:-1]:
+        assert_frame_equal(
+            pl.read_parquet(path),
+            incoming.filter(pl.col("game_id") == int(path.stem)),
+        )
+    assert_frame_equal(
+        pl.read_parquet(lookup_path),
+        existing_lookup.filter(pl.col("game_id") == 303),
+    )
+
+
 @pytest.mark.parametrize("existing_outputs", [False, True])
 @pytest.mark.parametrize("corruption", ["truncated", "schema", "values"])
 def test_invalid_pending_parquet_prevents_all_publication(
