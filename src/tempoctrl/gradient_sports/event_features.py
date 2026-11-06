@@ -99,12 +99,21 @@ def add_game_state_features(df_in: pl.DataFrame) -> pl.DataFrame:
 
 # Possession Player Features
 def create_num_challenges(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Count defender challenges per match and player possession."""
+    """Count challenges per match and identified player possession.
+
+    Count across game events within each player possession. Rows with a
+    null player-possession ID retain a null count because their
+    possession is unknown. Preserve every input row and its order.
+    """
     return df_in.with_columns(
-        pl.col("pe_possessioneventtype")
-        .eq("CH")
-        .sum()
-        .over("gameid", "match_team_player_possession_id")
+        pl.when(pl.col("match_team_player_possession_id").is_not_null())
+        .then(
+            pl.col("pe_possessioneventtype")
+            .eq("CH")
+            .sum()
+            .over("gameid", "match_team_player_possession_id")
+        )
+        .otherwise(None)
         .alias("defender_num_challenges"),
     )
 

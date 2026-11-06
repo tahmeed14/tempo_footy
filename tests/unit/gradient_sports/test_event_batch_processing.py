@@ -250,6 +250,9 @@ def test_combined_event_processing_matches_separate_matches(
         processing. Event numbers retain filtering gaps. Score,
         possession IDs, challenge counts, null states, and pass outcomes
         also match explicit expected values below.
+        Challenge totals span game-event IDs within each possession.
+        Unidentified challenges and pause rows retain null counts;
+        they do not contribute to identified possessions' totals.
 
     Guards against:
         Cross-match window leakage, accidental row multiplication or
@@ -321,6 +324,10 @@ def test_combined_event_processing_matches_separate_matches(
                 None if missing_challenge_player else "101_Shared_11_1",
                 None, "101_Opp_21_2", None,
             ]
+            expected_challenges = (
+                [0, 0, None, None, 0, None]
+                if missing_challenge_player else [1, 1, 1, None, 0, None]
+            )
         else:
             assert result["event_number"].to_list() == [1, 2, 3, 5, 6, 7, 8]
             assert result["home_score"].to_list() == [0, 0, 0, 0, 1, 1, 1]
@@ -337,12 +344,15 @@ def test_combined_event_processing_matches_separate_matches(
                 None if missing_challenge_player else "202_Shared_11_1",
                 None, "202_Opp_21_2", "202_Shared_11_3", None,
             ]
+            expected_challenges = (
+                [0, 0, None, None, 0, 0, None]
+                if missing_challenge_player else [1, 1, 1, None, 0, 0, None]
+            )
         assert result["match_team_player_possession_id"].to_list() == (
             expected_players
         )
         assert result["defender_num_challenges"].to_list() == (
-            [0, 0 if missing_challenge_player else 1, 1, 0, 0, 0]
-            + ([0] if game_id == 202 else [])
+            expected_challenges
         )
         challenge = result.filter(pl.col("event_number") == 3)
         assert challenge["first_touch_ballheight"].item() == "N/A"

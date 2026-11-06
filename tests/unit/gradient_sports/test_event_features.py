@@ -7,8 +7,95 @@ from polars.testing import assert_frame_equal
 from tempoctrl.gradient_sports.event_features import (
     add_game_state_features,
     create_match_scores,
+    create_num_challenges,
     create_team_scores,
 )
+
+
+def test_challenge_counts_exclude_unidentified_possessions() -> None:
+    """Count whole identified possessions without pooling unknown rows.
+
+    Behavior:
+        Count challenges across game events within each match and player
+        possession, leaving unidentified rows' counts null.
+
+    Input:
+        Nine interleaved rows from two matches reuse possession A across
+        multiple game-event IDs. Possession B has no challenges. Both
+        matches also have unidentified challenges and a null-type event.
+
+    Expected:
+        UInt32 counts 2, 1, 2, 1, 0, null, null, null, 2 in input order.
+        Every source column, row, value, and dtype remains unchanged.
+
+    Guards against:
+        Counting by individual game event, leaking counts between
+        matches, pooling unidentified rows, or treating unknown as zero.
+    """
+    events = pl.DataFrame(
+        {
+            "gameid": [101, 202, 101, 202, 101, 101, 202, 101, 101],
+            "gameeventid": [1, 1, 2, 2, 3, 4, 4, 5, 6],
+            "match_team_player_possession_id": [
+                "A", "A", "A", "A", "B", None, None, None, "A"
+            ],
+            "pe_possessioneventtype": [
+                "CH", "PA", "CH", "CH", "PA", "CH", "CH", None, None
+            ],
+        }
+    )
+    expected = events.with_columns(
+        pl.Series(
+            "defender_num_challenges",
+            [2, 1, 2, 1, 0, None, None, None, 2],
+            dtype=pl.UInt32,
+        )
+    )
+
+    assert_frame_equal(create_num_challenges(events), expected)
+
+
+@pytest.mark.parametrize("possession_dtype", [pl.Null, pl.String])
+@pytest.mark.parametrize("row_count", [0, 2])
+def test_challenge_counts_preserve_unknown_possessions_and_empty_schema(
+    possession_dtype: pl.DataType,
+    row_count: int,
+) -> None:
+    """Keep unidentified-only counts null with stable empty schemas.
+
+    Behavior:
+        Support Null and String possession-ID columns with no known IDs.
+
+    Input:
+        Zero or two events from match 101 with null possession IDs and
+        entirely Null-typed event types.
+
+    Expected:
+        Preserve all source data and add a UInt32 count column with
+        only nulls, or zero rows for empty input.
+
+    Guards against:
+        Inventing zero counts for unknown possessions, Null-dtype
+        errors, fabricated empty rows, or count dtype drift.
+    """
+    events = pl.DataFrame(
+        {
+            "gameid": pl.Series([101] * row_count, dtype=pl.Int64),
+            "match_team_player_possession_id": pl.Series(
+                [None] * row_count, dtype=possession_dtype
+            ),
+            "pe_possessioneventtype": pl.Series(
+                [None] * row_count, dtype=pl.Null
+            ),
+        }
+    )
+    expected = events.with_columns(
+        pl.Series(
+            "defender_num_challenges", [None] * row_count, dtype=pl.UInt32
+        )
+    )
+
+    assert_frame_equal(create_num_challenges(events), expected)
 
 
 @pytest.mark.parametrize("indicator_dtype", [pl.Null, pl.Boolean])
