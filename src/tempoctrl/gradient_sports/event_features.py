@@ -40,6 +40,7 @@ def create_match_scores(df_in: pl.DataFrame) -> pl.DataFrame:
     Calculate the goal difference for the in-possession team, then label
     that team as winning, drawing, or losing. Rows without a home-team
     indicator retain null values for both game-state columns.
+    Accept Boolean and entirely Null-typed home-team columns.
 
     Gradient Sports uses homeTeam to specify which team is associated
     with the possession event. The game-state columns are computed from
@@ -57,10 +58,11 @@ def create_match_scores(df_in: pl.DataFrame) -> pl.DataFrame:
 
     """
     home_goal_difference = pl.col("home_score") - pl.col("away_score")
+    home_team = pl.col("ge_hometeam").cast(pl.Boolean)
     goal_difference = (
-        pl.when(pl.col("ge_hometeam"))
+        pl.when(home_team)
         .then(home_goal_difference)
-        .when(~pl.col("ge_hometeam"))
+        .when(~home_team)
         .then(-home_goal_difference)
         .otherwise(None)
     )

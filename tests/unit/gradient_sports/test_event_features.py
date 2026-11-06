@@ -6,8 +6,95 @@ from polars.testing import assert_frame_equal
 
 from tempoctrl.gradient_sports.event_features import (
     add_game_state_features,
+    create_match_scores,
     create_team_scores,
 )
+
+
+@pytest.mark.parametrize("indicator_dtype", [pl.Null, pl.Boolean])
+@pytest.mark.parametrize("row_count", [0, 2])
+def test_create_match_scores_accepts_null_home_team_columns(
+    indicator_dtype: pl.DataType,
+    row_count: int,
+) -> None:
+    """Leave game state unknown for missing home-team indicators.
+
+    Behavior:
+        Accept Null dtype and Boolean-typed nulls without errors.
+
+    Input:
+        Zero or two rows with Int32 home/away scores, null home-team
+        indicators, and UInt32 event numbers in unsorted order.
+
+    Expected:
+        Preserve source rows, order, values, and dtypes. Add entirely
+        null Int32 goal differences and String game states, including
+        those output types for empty input.
+
+    Guards against:
+        Negating a Null-typed column, treating unknown teams as home or
+        away, fabricating empty rows, or unstable output schemas.
+    """
+    events = pl.DataFrame(
+        {
+            "event_number": pl.Series([2, 1][:row_count], dtype=pl.UInt32),
+            "home_score": pl.Series([2, 0][:row_count], dtype=pl.Int32),
+            "away_score": pl.Series([1, 1][:row_count], dtype=pl.Int32),
+            "ge_hometeam": pl.Series(
+                [None] * row_count, dtype=indicator_dtype
+            ),
+        }
+    )
+    expected = events.with_columns(
+        pl.Series("game_state_goal_diff", [None] * row_count, dtype=pl.Int32),
+        pl.Series("game_state", [None] * row_count, dtype=pl.String),
+    )
+
+    assert_frame_equal(create_match_scores(events), expected)
+
+
+def test_create_match_scores_preserves_home_and_away_perspectives() -> None:
+    """Keep score perspectives unchanged when accepting Null dtype.
+
+    Behavior:
+        Label home and away teams as winning, losing, or drawing while
+        leaving a missing team indicator unknown.
+
+    Input:
+        Seven rows cover both teams leading, trailing, drawing, and a
+        null indicator in a Boolean column, using Int32 scores.
+
+    Expected:
+        Goal differences 1, -1, -1, 1, 0, 0, null and corresponding
+        String state labels, with every source column unchanged.
+
+    Guards against:
+        Reversing the away perspective or mapping unknown teams to a
+        valid state while correcting the Null-dtype error.
+    """
+    events = pl.DataFrame(
+        {
+            "home_score": pl.Series([2, 2, 1, 1, 2, 1, 2], dtype=pl.Int32),
+            "away_score": pl.Series([1, 1, 2, 2, 2, 1, 1], dtype=pl.Int32),
+            "ge_hometeam": [True, False, True, False, True, False, None],
+        }
+    )
+    expected = events.with_columns(
+        pl.Series(
+            "game_state_goal_diff", [1, -1, -1, 1, 0, 0, None],
+            dtype=pl.Int32,
+        ),
+        pl.Series(
+            "game_state",
+            [
+                "Winning", "Losing", "Losing", "Winning", "Drawing",
+                "Drawing", None,
+            ],
+            dtype=pl.String,
+        ),
+    )
+
+    assert_frame_equal(create_match_scores(events), expected)
 
 
 @pytest.mark.parametrize(
