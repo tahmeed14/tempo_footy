@@ -258,34 +258,58 @@ def reclassify_ballheight(df_in: pl.DataFrame) -> pl.DataFrame:
 
 
 def reclassify_pressuretype(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Reclassify pressure-type values."""
+    """Reclassify pressure, using N/A for entirely Null-typed columns.
+
+    String-typed nulls and unknown codes retain the No Pressure default.
+    Treat the two source column dtypes independently.
+    """
     return df_in.with_columns(
-        pl.col("pe_pressuretype")
-        .replace_strict(PRESSURE_MAPPER, default="No Pressure")
-        .alias("defender_pressure_type"),
-        pl.col("it_initialpressuretype")
-        .replace_strict(PRESSURE_MAPPER, default="No Pressure")
-        .alias("first_touch_defender_pressure_type"),
+        (
+            pl.lit("N/A")
+            if df_in.schema[source] == pl.Null
+            else pl.col(source).replace_strict(
+                PRESSURE_MAPPER, default="No Pressure"
+            )
+        ).alias(target)
+        for source, target in (
+            ("pe_pressuretype", "defender_pressure_type"),
+            ("it_initialpressuretype", "first_touch_defender_pressure_type"),
+        )
     ).drop(["it_initialpressuretype", "pe_pressuretype"])
 
 
 def reclassify_firsttouch(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Reclassify first-touch values."""
-    return df_in.with_columns(
-        pl.col("it_initialbodytype")
+    """Reclassify first-touch values, including Null-typed columns.
+
+    Entirely Null-typed columns, String-typed nulls, and unknown codes
+    map to N/A.
+    """
+    bodypart = (
+        pl.lit("N/A")
+        if df_in.schema["it_initialbodytype"] == pl.Null
+        else pl.col("it_initialbodytype")
         .replace_strict(BODYPART_MAPPER, default="N/A")
         .fill_null("Not available")
-        .alias("first_touch_bodypart")
+    )
+    return df_in.with_columns(
+        bodypart.alias("first_touch_bodypart")
     ).drop("it_initialbodytype")
 
 
 def reclassify_linesbrokentype(df_in: pl.DataFrame) -> pl.DataFrame:
-    """Reclassify lines-broken values."""
-    return df_in.with_columns(
-        pl.col("pe_linesbrokentype")
+    """Reclassify lines broken, using N/A for Null-typed columns.
+
+    String-typed nulls and unknown codes retain the literal None label.
+    """
+    lines_broken = (
+        pl.lit("N/A")
+        if df_in.schema["pe_linesbrokentype"] == pl.Null
+        else pl.col("pe_linesbrokentype")
         .replace_strict(LINESBROKEN_MAPPER, default="None")
         .fill_null("None")
-        .alias("lines_broken_type")
+    )
+    return df_in.with_columns(
+        lines_broken.alias("lines_broken_type")
     ).drop("pe_linesbrokentype")
 
 
