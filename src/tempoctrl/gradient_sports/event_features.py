@@ -104,7 +104,7 @@ def create_num_challenges(df_in: pl.DataFrame) -> pl.DataFrame:
         pl.col("pe_possessioneventtype")
         .eq("CH")
         .sum()
-        .over("gameid", "gameeventid", "match_team_player_possession_id")
+        .over("gameid", "match_team_player_possession_id")
         .alias("defender_num_challenges"),
     )
 
