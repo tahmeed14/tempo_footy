@@ -61,6 +61,11 @@ dependencies = [
     "yarl==1.22.0",
 ]
 
+[project.optional-dependencies]
+viewer = [
+    "streamlit>=1.67,<2",
+]
+
 [dependency-groups]
 dev = [
     "ipykernel>=7.1.0",
