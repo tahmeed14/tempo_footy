@@ -6,6 +6,16 @@ data/
 *.py[cod]
 
 notebooks/*
+!notebooks/cmsac_feedback/
+notebooks/cmsac_feedback/*
+!notebooks/cmsac_feedback/possession_viewer.py
+!notebooks/cmsac_feedback/possession_viewer.md
+!notebooks/cmsac_feedback/judge_00_start_here.py
+!notebooks/cmsac_feedback/judge_01_variance.py
+!notebooks/cmsac_feedback/judge_02_archetypes.py
+!notebooks/cmsac_feedback/judge_03_repeatability.py
+!notebooks/cmsac_feedback/judge_04_variability_success.py
+!notebooks/cmsac_feedback/judge_05_tempo_context.py
 !notebooks/research_investigations/
 notebooks/research_investigations/*
 !notebooks/research_investigations/ball_interpolation_model_comparison.py
